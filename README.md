@@ -266,7 +266,7 @@ git push origin feature/geojson-reader
 
 ---
 
-## 📅 План разработки (ориентировачно)
+## 📅 План разработки (ориентировочно)
 
 ### Неделя 1 (15–21 сентября)
 - [x] Инфраструктура (Java 11, Spring Boot, PostgreSQL, Docker)
