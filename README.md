@@ -195,6 +195,97 @@ git push origin feature/geojson-reader
 4. Создайте Pull Request.
 5. Дождитесь ревью от напарника.
 
+
+---
+
+## 📊 Статус разработки
+
+> Проект находится на стадии активной разработки. Ниже — список того, что уже готово, и что предстоит сделать.
+
+### ✅ Что уже сделано
+
+- [x] Настроен проект Spring Boot 2.6.3 на Java 11
+- [x] Настроен Maven с зависимостями (Web, JPA, PostgreSQL, Hibernate Spatial, JTS, Lombok, Swagger)
+- [x] Поднят PostgreSQL 15 + PostGIS 3.3 в Docker
+- [x] Настроено подключение к БД через `application.yml`
+- [x] Подключён Swagger UI (Springdoc OpenAPI 1.7.0)
+- [x] Настроен `.gitignore`
+- [x] Создан репозиторий на GitHub
+- [x] Настроен Docker Compose для запуска БД
+
+### 🚧 Что в процессе
+
+- [ ] Тестовый контроллер `HelloController`
+- [ ] JPA-сущности (модели таблиц)
+- [ ] Репозитории для работы с БД
+
+### ❌ Что ещё не сделано
+
+**API-слой**
+- [ ] `TaskController` — `POST /solve`, `GET /status/{taskId}`, `GET /result/{taskId}`
+- [ ] DTO для запросов и ответов
+- [ ] Асинхронная обработка файлов
+
+**Бизнес-логика (Service)**
+- [ ] `GeoJsonReaderService` — потоковое чтение GeoJSON
+- [ ] `GeoJsonWriterService` — потоковая запись GeoJSON
+- [ ] `RoutingService` — построение маршрутов
+- [ ] `FlowCalculationService` — расходы и диаметры
+- [ ] `ReconstructionService` — реконструкция существующей сети
+- [ ] `CostService` — расчёт стоимости
+- [ ] `VariantService` — формирование вариантов
+
+**Геометрия (JTS)**
+- [ ] `CoordinateTransformer` — WGS84 → UTM37N
+- [ ] `ObstacleChecker` — проверка препятствий
+- [ ] `GraphBuilder` — построение графа
+
+**Работа с БД**
+- [ ] JPA-сущности: `GeoObject`, `NewNetwork`, `TieIn`, `Reconstruction`, `Variant`
+- [ ] Репозитории
+- [ ] SQL-скрипт для PostGIS
+
+**Конфигурация**
+- [ ] `SwaggerConfig`
+- [ ] `JacksonConfig`
+
+**Docker**
+- [ ] `Dockerfile` для приложения
+- [ ] Объединение app и db в одном `docker-compose.yml`
+
+**Документация**
+- [ ] Описание алгоритма трассировки
+- [ ] Описание обработки ОКС без маршрута
+- [ ] Описание выходных данных
+- [ ] Описание границ применения
+
+**Тестирование**
+- [ ] Модульные тесты
+- [ ] Интеграционные тесты
+- [ ] Тестовый GeoJSON-набор
+
+---
+
+## 📅 План разработки (ориентировачно)
+
+### Неделя 1 (15–21 сентября)
+- [x] Инфраструктура (Java 11, Spring Boot, PostgreSQL, Docker)
+- [ ] JPA-сущности и репозитории
+- [ ] `GeoJsonReaderService`
+- [ ] `CoordinateTransformer`
+
+### Неделя 2 (22–29 сентября)
+- [ ] `RoutingService`
+- [ ] `FlowCalculationService`
+- [ ] `ReconstructionService`
+- [ ] `CostService`
+- [ ] `VariantService`
+- [ ] `TaskController` (API)
+- [ ] Презентация и документация
+
+**Дедлайн сдачи:** 29 сентября 2026, 23:59 МСК
+
+
 ## 📄 Лицензия
 
 Проект создан в рамках хакатона «Лидеры цифровой трансформации 2026».
