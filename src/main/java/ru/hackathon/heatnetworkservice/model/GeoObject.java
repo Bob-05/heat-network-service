@@ -42,7 +42,7 @@ public class GeoObject {
     @Column(name = "upstream_object_id")
     private String upstreamObjectId;
 
-    @Column(name = "properties", columnDefinition = "jsonb")
+    @Column(name = "properties", columnDefinition = "text")
     private String properties;
 
     @Column(name = "geometry", columnDefinition = "geometry(Geometry, 4326)")
