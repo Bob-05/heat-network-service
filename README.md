@@ -227,7 +227,7 @@ git push origin feature/geojson-reader
 - [ ] Асинхронная обработка файлов
 
 **Бизнес-логика (Service)**
-- [ ] `GeoJsonReaderService` — потоковое чтение GeoJSON
+- [x] `GeoJsonReaderService` — потоковое чтение GeoJSON
 - [ ] `GeoJsonWriterService` — потоковая запись GeoJSON
 - [ ] `RoutingService` — построение маршрутов
 - [ ] `FlowCalculationService` — расходы и диаметры
@@ -241,8 +241,8 @@ git push origin feature/geojson-reader
 - [ ] `GraphBuilder` — построение графа
 
 **Работа с БД**
-- [ ] JPA-сущности: `GeoObject`, `NewNetwork`, `TieIn`, `Reconstruction`, `Variant`
-- [ ] Репозитории
+- [x] JPA-сущности: `GeoObject`, `NewNetwork`, `TieIn`, `Reconstruction`, `Variant`
+- [x] Репозитории
 - [ ] SQL-скрипт для PostGIS
 
 **Конфигурация**
