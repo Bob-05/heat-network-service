@@ -1,6 +1,5 @@
 ⚠️ **СТАТУС ПРОЕКТА: В РАЗРАБОТКЕ** ⚠️
 
-
 # Heat Network Service
 
 Сервис автоматического построения вариантов подключения перспективных объектов капитального строительства (ОКС) к существующей тепловой сети.
@@ -30,28 +29,33 @@ heat-network-service/
 │   ├── HeatNetworkServiceApplication.java   ← Точка входа Spring Boot
 │   │
 │   ├── controller/                          ← API-слой (HTTP-запросы)
+│   │   ├── HelloController.java             ← Тестовый эндпоинт
+│   │   ├── GeoJsonReaderController.java     ← Тестовое чтение
 │   │   ├── TaskController.java              ← POST /solve, GET /status, GET /result
 │   │   └── dto/                             ← DTO для запросов/ответов
+│   │       └── TaskStatus.java
 │   │
 │   ├── service/                             ← Бизнес-логика
 │   │   ├── GeoJsonReaderService.java        ← Потоковое чтение GeoJSON
 │   │   ├── GeoJsonWriterService.java        ← Потоковая запись GeoJSON
-│   │   ├── RoutingService.java              ← Построение маршрутов
-│   │   ├── FlowCalculationService.java      ← Расчёт расходов и диаметров
-│   │   ├── ReconstructionService.java       ← Проверка реконструкции
-│   │   ├── CostService.java                 ← Расчёт стоимости
-│   │   └── VariantService.java              ← Формирование вариантов
+│   │   ├── TaskService.java                 ← Управление задачами
+│   │   ├── RoutingService.java              ← Построение маршрутов (в разработке)
+│   │   ├── FlowCalculationService.java      ← Расчёт расходов и диаметров (в разработке)
+│   │   ├── ReconstructionService.java       ← Проверка реконструкции (в разработке)
+│   │   ├── CostService.java                 ← Расчёт стоимости (в разработке)
+│   │   └── VariantService.java              ← Формирование вариантов (в разработке)
 │   │
 │   ├── geometry/                            ← Работа с JTS
 │   │   ├── CoordinateTransformer.java       ← WGS84 → UTM37N
-│   │   ├── ObstacleChecker.java             ← Проверка препятствий
-│   │   └── GraphBuilder.java                ← Построение графа
+│   │   ├── ObstacleChecker.java             ← Проверка препятствий (в разработке)
+│   │   └── GraphBuilder.java                ← Построение графа (в разработке)
 │   │
 │   ├── repository/                          ← Работа с БД (Spring Data JPA)
-│   │   ├── ObjectRepository.java
+│   │   ├── GeoObjectRepository.java
 │   │   ├── NewNetworkRepository.java
 │   │   ├── TieInRepository.java
-│   │   └── ReconstructionRepository.java
+│   │   ├── ReconstructionRepository.java
+│   │   └── VariantRepository.java
 │   │
 │   ├── model/                               ← JPA-сущности (таблицы)
 │   │   ├── GeoObject.java
@@ -60,17 +64,18 @@ heat-network-service/
 │   │   ├── Reconstruction.java
 │   │   └── Variant.java
 │   │
-│   └── config/                              ← Конфигурация
+│   └── config/                              ← Конфигурация (в разработке)
 │       ├── SwaggerConfig.java
 │       └── JacksonConfig.java
 │
 ├── src/main/resources/
 │   ├── application.yml                      ← Настройки приложения
-│   └── db/migration/                        ← SQL-скрипты
+│   └── test-data/
+│       └── test_input.geojson               ← Тестовый GeoJSON
 │
 ├── pom.xml                                  ← Зависимости Maven
-├── Dockerfile                               ← Сборка контейнера
-├── docker-compose.yml                       ← Запуск app + db
+├── Dockerfile                               ← Сборка контейнера (в разработке)
+├── docker-compose.yml                       ← Запуск БД
 ├── README.md                                ← Этот файл
 └── .gitignore                               ← Что не коммитить
 ```
@@ -122,6 +127,7 @@ docker ps
 
 - Swagger UI: `http://localhost:8080/swagger-ui.html`
 - Тестовый эндпоинт: `http://localhost:8080/api/v1/hello`
+- Загрузка файла: `POST /api/v1/solve` (multipart/form-data)
 
 ## 📖 Документация API
 
@@ -131,18 +137,26 @@ docker ps
 http://localhost:8080/swagger-ui.html
 ```
 
+### Основные эндпоинты
+
+| Метод | URL | Что делает |
+|---|---|---|
+| `POST` | `/api/v1/solve` | Загрузить GeoJSON-файл, запустить обработку |
+| `GET` | `/api/v1/status/{taskId}` | Проверить статус задачи |
+| `GET` | `/api/v1/result/{taskId}` | Скачать результат обработки |
+
 ## 🔄 Git Workflow
 
 Мы используем **feature branch workflow** — простую и эффективную стратегию для команды из 2 человек.
 
 ### Основные правила
 
-1. **Никогда не пушьте напрямую в `main`** — только через Pull Request.
+1. **Никогда не пушьте напрямую в `master`** — только через Pull Request.
 2. **Создавайте отдельную ветку для каждой задачи:**
 
    ```bash
-   git checkout main
-   git pull origin main
+   git checkout master
+   git pull origin master
    git checkout -b feature/краткое-описание
    ```
 
@@ -152,7 +166,7 @@ http://localhost:8080/swagger-ui.html
    git push origin feature/краткое-описание
    ```
 
-4. **Создавайте Pull Request** на GitHub: из вашей ветки в `main`.
+4. **Создавайте Pull Request** на GitHub: из вашей ветки в `master`.
 5. **После мержа** — удалите ветку.
 
 ### Соглашение об именовании веток
@@ -169,9 +183,9 @@ http://localhost:8080/swagger-ui.html
 ### Пример работы
 
 ```bash
-# 1. Обновить main
-git checkout main
-git pull origin main
+# 1. Обновить master
+git checkout master
+git pull origin master
 
 # 2. Создать ветку
 git checkout -b feature/geojson-reader
@@ -189,12 +203,11 @@ git push origin feature/geojson-reader
 
 ## 🤝 Как внести вклад
 
-1. Создайте ветку от `main`.
+1. Создайте ветку от `master`.
 2. Внесите изменения.
 3. Пушьте ветку.
 4. Создайте Pull Request.
 5. Дождитесь ревью от напарника.
-
 
 ---
 
@@ -204,8 +217,9 @@ git push origin feature/geojson-reader
 
 ### ✅ Что уже сделано
 
+**Инфраструктура**
 - [x] Настроен проект Spring Boot 2.6.3 на Java 11
-- [x] Настроен Maven с зависимостями (Web, JPA, PostgreSQL, Hibernate Spatial, JTS, Lombok, Swagger)
+- [x] Настроен Maven с зависимостями (Web, JPA, PostgreSQL, Hibernate Spatial, JTS, Lombok, Swagger, proj4j)
 - [x] Поднят PostgreSQL 15 + PostGIS 3.3 в Docker
 - [x] Настроено подключение к БД через `application.yml`
 - [x] Подключён Swagger UI (Springdoc OpenAPI 1.7.0)
@@ -213,41 +227,42 @@ git push origin feature/geojson-reader
 - [x] Создан репозиторий на GitHub
 - [x] Настроен Docker Compose для запуска БД
 
-### 🚧 Что в процессе
+**Модель данных**
+- [x] 5 JPA-сущностей: `GeoObject`, `NewNetwork`, `TieIn`, `Reconstruction`, `Variant`
+- [x] 5 репозиториев для работы с БД
+- [x] Hibernate автоматически создаёт таблицы
 
-- [x] Тестовый контроллер `HelloController`
-- [x] JPA-сущности (модели таблиц)
-- [x] Репозитории для работы с БД
+**API-слой**
+- [x] `HelloController` — тестовый эндпоинт
+- [x] `GeoJsonReaderController` — тестовое чтение
+- [x] `TaskController` — `POST /solve`, `GET /status/{taskId}`, `GET /result/{taskId}`
+- [x] DTO для запросов и ответов (`TaskStatus`)
+- [x] Асинхронная обработка файлов (`@Async`)
+
+**Потоковая обработка**
+- [x] `GeoJsonReaderService` — чтение GeoJSON (все типы геометрии)
+- [x] `GeoJsonWriterService` — запись GeoJSON (все типы геометрии)
+- [x] `TaskService` — управление задачами
+
+**Геометрия**
+- [x] `CoordinateTransformer` — WGS84 → UTM37N
 
 ### ❌ Что ещё не сделано
 
-**API-слой**
-- [ ] `TaskController` — `POST /solve`, `GET /status/{taskId}`, `GET /result/{taskId}`
-- [ ] DTO для запросов и ответов
-- [ ] Асинхронная обработка файлов
-
 **Бизнес-логика (Service)**
-- [x] `GeoJsonReaderService` — потоковое чтение GeoJSON
-- [ ] `GeoJsonWriterService` — потоковая запись GeoJSON
 - [ ] `RoutingService` — построение маршрутов
 - [ ] `FlowCalculationService` — расходы и диаметры
 - [ ] `ReconstructionService` — реконструкция существующей сети
 - [ ] `CostService` — расчёт стоимости
-- [ ] `VariantService` — формирование вариантов
+- [ ] `VariantService` — формирование и ранжирование вариантов
 
 **Геометрия (JTS)**
-- [ ] `CoordinateTransformer` — WGS84 → UTM37N
 - [ ] `ObstacleChecker` — проверка препятствий
 - [ ] `GraphBuilder` — построение графа
 
-**Работа с БД**
-- [x] JPA-сущности: `GeoObject`, `NewNetwork`, `TieIn`, `Reconstruction`, `Variant`
-- [x] Репозитории
-- [ ] SQL-скрипт для PostGIS
-
 **Конфигурация**
-- [ ] `SwaggerConfig`
-- [ ] `JacksonConfig`
+- [ ] `SwaggerConfig` — детальная настройка OpenAPI
+- [ ] `JacksonConfig` — настройка сериализации GeoJSON
 
 **Docker**
 - [ ] `Dockerfile` для приложения
@@ -262,7 +277,6 @@ git push origin feature/geojson-reader
 **Тестирование**
 - [ ] Модульные тесты
 - [ ] Интеграционные тесты
-- [ ] Тестовый GeoJSON-набор
 
 ---
 
@@ -270,21 +284,24 @@ git push origin feature/geojson-reader
 
 ### Неделя 1 (15–21 сентября)
 - [x] Инфраструктура (Java 11, Spring Boot, PostgreSQL, Docker)
-- [ ] JPA-сущности и репозитории
-- [ ] `GeoJsonReaderService`
-- [ ] `CoordinateTransformer`
+- [x] JPA-сущности и репозитории
+- [x] `GeoJsonReaderService`
+- [x] `GeoJsonWriterService`
+- [x] `CoordinateTransformer`
+- [x] `TaskController` (API)
 
 ### Неделя 2 (22–29 сентября)
+- [ ] `ObstacleChecker`
+- [ ] `GraphBuilder`
 - [ ] `RoutingService`
 - [ ] `FlowCalculationService`
 - [ ] `ReconstructionService`
 - [ ] `CostService`
 - [ ] `VariantService`
-- [ ] `TaskController` (API)
+- [ ] `Dockerfile` + объединение docker-compose
 - [ ] Презентация и документация
 
 **Дедлайн сдачи:** 29 сентября 2026, 23:59 МСК
-
 
 ## 📄 Лицензия
 
