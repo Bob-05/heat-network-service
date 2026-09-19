@@ -7,9 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.locationtech.jts.geom.Coordinate;
-import org.locationtech.jts.geom.GeometryFactory;
-import org.locationtech.jts.geom.Point;
+import org.locationtech.jts.geom.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.hackathon.heatnetworkservice.model.GeoObject;
@@ -91,15 +89,10 @@ public class GeoJsonReaderService {
 
             geoObject.setProperties(properties.toString());
 
-            // Пока сохраняем геометрию как точку (для простоты)
-            // Позже добавим LineString, Polygon и т.д.
-            if ("Point".equals(geometry.get("type").asText())) {
-                JsonNode coords = geometry.get("coordinates");
-                double lon = coords.get(0).asDouble();
-                double lat = coords.get(1).asDouble();
-                Point point = geometryFactory.createPoint(new Coordinate(lon, lat));
-                point.setSRID(4326);
-                geoObject.setGeometry(point);
+            // Парсим геометрию
+            Geometry geom = parseGeometry(geometry);
+            if (geom != null) {
+                geoObject.setGeometry(geom);
             }
 
             return geoObject;
@@ -108,5 +101,93 @@ public class GeoJsonReaderService {
             log.error("Ошибка парсинга feature: {}", e.getMessage());
             return null;
         }
+    }
+
+    private Geometry parseGeometry(JsonNode geometry) {
+        String type = geometry.get("type").asText();
+
+        switch (type) {
+            case "Point":
+                return parsePoint(geometry);
+            case "LineString":
+                return parseLineString(geometry);
+            case "Polygon":
+                return parsePolygon(geometry);
+            case "MultiPolygon":
+                return parseMultiPolygon(geometry);
+            default:
+                log.warn("Неизвестный тип геометрии: {}", type);
+                return null;
+        }
+    }
+
+    private Point parsePoint(JsonNode geometry) {
+        JsonNode coords = geometry.get("coordinates");
+        double lon = coords.get(0).asDouble();
+        double lat = coords.get(1).asDouble();
+        Point point = geometryFactory.createPoint(new Coordinate(lon, lat));
+        point.setSRID(4326);
+        return point;
+    }
+
+    private LineString parseLineString(JsonNode geometry) {
+        JsonNode coords = geometry.get("coordinates");
+        Coordinate[] coordinates = new Coordinate[coords.size()];
+        for (int i = 0; i < coords.size(); i++) {
+            JsonNode point = coords.get(i);
+            coordinates[i] = new Coordinate(point.get(0).asDouble(), point.get(1).asDouble());
+        }
+        LineString lineString = geometryFactory.createLineString(coordinates);
+        lineString.setSRID(4326);
+        return lineString;
+    }
+
+    private Polygon parsePolygon(JsonNode geometry) {
+        JsonNode coords = geometry.get("coordinates");
+        // Первое кольцо — внешняя граница
+        JsonNode exteriorRing = coords.get(0);
+        Coordinate[] exteriorCoords = parseCoordinateArray(exteriorRing);
+        LinearRing shell = geometryFactory.createLinearRing(exteriorCoords);
+
+        // Остальные кольца — дырки (если есть)
+        LinearRing[] holes = new LinearRing[coords.size() - 1];
+        for (int i = 1; i < coords.size(); i++) {
+            holes[i - 1] = geometryFactory.createLinearRing(parseCoordinateArray(coords.get(i)));
+        }
+
+        Polygon polygon = geometryFactory.createPolygon(shell, holes);
+        polygon.setSRID(4326);
+        return polygon;
+    }
+
+    private MultiPolygon parseMultiPolygon(JsonNode geometry) {
+        JsonNode coords = geometry.get("coordinates");
+        Polygon[] polygons = new Polygon[coords.size()];
+
+        for (int i = 0; i < coords.size(); i++) {
+            JsonNode polygonCoords = coords.get(i);
+            JsonNode exteriorRing = polygonCoords.get(0);
+            Coordinate[] exteriorCoords = parseCoordinateArray(exteriorRing);
+            LinearRing shell = geometryFactory.createLinearRing(exteriorCoords);
+
+            LinearRing[] holes = new LinearRing[polygonCoords.size() - 1];
+            for (int j = 1; j < polygonCoords.size(); j++) {
+                holes[j - 1] = geometryFactory.createLinearRing(parseCoordinateArray(polygonCoords.get(j)));
+            }
+            polygons[i] = geometryFactory.createPolygon(shell, holes);
+        }
+
+        MultiPolygon multiPolygon = geometryFactory.createMultiPolygon(polygons);
+        multiPolygon.setSRID(4326);
+        return multiPolygon;
+    }
+
+    private Coordinate[] parseCoordinateArray(JsonNode array) {
+        Coordinate[] coordinates = new Coordinate[array.size()];
+        for (int i = 0; i < array.size(); i++) {
+            JsonNode point = array.get(i);
+            coordinates[i] = new Coordinate(point.get(0).asDouble(), point.get(1).asDouble());
+        }
+        return coordinates;
     }
 }
