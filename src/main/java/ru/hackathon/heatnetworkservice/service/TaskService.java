@@ -51,7 +51,7 @@ public class TaskService {
             // 2. routingService.buildRoutes()
             // 3. flowCalculationService.calculate()
             // 4. costService.calculate()
-            // 5. geoJsonWriterService.writeResult(outputFile, ...)
+            // 5. geoJsonWriterService.writeResult(outputFile, variants, newNetworksMap, tieInsMap)
 
             // Пока — просто заглушка
             Thread.sleep(3000); // имитация долгой обработки

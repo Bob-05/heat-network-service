@@ -7,7 +7,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.locationtech.jts.geom.Geometry;
 import org.springframework.stereotype.Service;
 import ru.hackathon.heatnetworkservice.model.NewNetwork;
-import ru.hackathon.heatnetworkservice.model.Reconstruction;
 import ru.hackathon.heatnetworkservice.model.TieIn;
 import ru.hackathon.heatnetworkservice.model.Variant;
 
@@ -26,13 +25,17 @@ public class GeoJsonWriterService {
 
     /**
      * Записывает результат в GeoJSON-файл.
+     *
+     * @param outputFile     путь к выходному файлу
+     * @param variants       список вариантов
+     * @param newNetworksMap новые участки по variantId
+     * @param tieInsMap      точки врезки по variantId
      */
     public void writeResult(
             File outputFile,
             List<Variant> variants,
             Map<String, List<NewNetwork>> newNetworksMap,
-            Map<String, List<TieIn>> tieInsMap,
-            Map<String, List<Reconstruction>> reconstructionsMap
+            Map<String, List<TieIn>> tieInsMap
     ) throws IOException {
 
         log.info("Начинаем запись GeoJSON в файл: {}", outputFile.getAbsolutePath());
@@ -41,13 +44,11 @@ public class GeoJsonWriterService {
              JsonGenerator gen = objectMapper.getFactory().createGenerator(fos)) {
             gen.useDefaultPrettyPrinter();
 
-            // Начинаем FeatureCollection
             gen.writeStartObject();
             gen.writeStringField("type", "FeatureCollection");
             gen.writeStringField("name", "heat_network_result");
             gen.writeArrayFieldStart("features");
 
-            // Пишем объекты по каждому варианту
             for (Variant variant : variants) {
                 String variantId = variant.getId();
 
@@ -63,17 +64,10 @@ public class GeoJsonWriterService {
                     writeTieIn(gen, tieIn);
                 }
 
-                // Реконструкция
-                List<Reconstruction> reconstructions = reconstructionsMap.getOrDefault(variantId, List.of());
-                for (Reconstruction rec : reconstructions) {
-                    writeReconstruction(gen, rec);
-                }
-
                 // Сводка по варианту
                 writeVariantSummary(gen, variant);
             }
 
-            // Закрываем features и объект
             gen.writeEndArray();
             gen.writeEndObject();
         }
@@ -119,43 +113,11 @@ public class GeoJsonWriterService {
 
         gen.writeObjectFieldStart("properties");
         gen.writeStringField("id", tieIn.getId());
-        gen.writeStringField("object_type", "tie_in");
+        gen.writeStringField("object_type", "heat_chamber");
         gen.writeStringField("variant_id", tieIn.getVariantId());
-        gen.writeStringField("existing_object_id", tieIn.getExistingObjectId());
-        gen.writeStringField("existing_object_type", tieIn.getExistingObjectType());
-        if (tieIn.getExistingDiameter() != null) gen.writeNumberField("existing_diameter", tieIn.getExistingDiameter());
-        else gen.writeNullField("existing_diameter");
-        gen.writeNumberField("required_diameter", tieIn.getRequiredDiameter());
+        if (tieIn.getRequiredDiameter() != null) gen.writeNumberField("diameter", tieIn.getRequiredDiameter());
+        else gen.writeNullField("diameter");
         gen.writeNumberField("cost", tieIn.getCost());
-        gen.writeEndObject();
-
-        gen.writeEndObject();
-    }
-
-    private void writeReconstruction(JsonGenerator gen, Reconstruction rec) throws IOException {
-        gen.writeStartObject();
-        gen.writeStringField("type", "Feature");
-
-        gen.writeObjectFieldStart("geometry");
-        writeGeometry(gen, rec.getGeometry());
-        gen.writeEndObject();
-
-        gen.writeObjectFieldStart("properties");
-        gen.writeStringField("id", rec.getId());
-        gen.writeStringField("object_type", "heat_network_reconstruction");
-        gen.writeStringField("variant_id", rec.getVariantId());
-        gen.writeStringField("existing_object_id", rec.getExistingObjectId());
-        if (rec.getExistingFlowTph() != null) gen.writeNumberField("existing_flow_tph", rec.getExistingFlowTph());
-        else gen.writeNullField("existing_flow_tph");
-        if (rec.getAddedFlowTph() != null) gen.writeNumberField("added_flow_tph", rec.getAddedFlowTph());
-        else gen.writeNullField("added_flow_tph");
-        if (rec.getCalculatedFlowTph() != null) gen.writeNumberField("calculated_flow_tph", rec.getCalculatedFlowTph());
-        else gen.writeNullField("calculated_flow_tph");
-        if (rec.getExistingDiameter() != null) gen.writeNumberField("existing_diameter", rec.getExistingDiameter());
-        else gen.writeNullField("existing_diameter");
-        gen.writeNumberField("required_diameter", rec.getRequiredDiameter());
-        gen.writeNumberField("length", rec.getLength());
-        gen.writeNumberField("cost", rec.getCost());
         gen.writeEndObject();
 
         gen.writeEndObject();
@@ -173,16 +135,14 @@ public class GeoJsonWriterService {
         if (variant.getRank() != null) gen.writeNumberField("rank", variant.getRank());
         if (variant.getConstructionCost() != null) gen.writeNumberField("construction_cost", variant.getConstructionCost());
         if (variant.getChamberConstructionCost() != null) gen.writeNumberField("chamber_construction_cost", variant.getChamberConstructionCost());
-        if (variant.getTieInCost() != null) gen.writeNumberField("tie_in_cost", variant.getTieInCost());
-        if (variant.getReconstructionCost() != null) gen.writeNumberField("reconstruction_cost", variant.getReconstructionCost());
-        if (variant.getChamberReconstructionCost() != null) gen.writeNumberField("chamber_reconstruction_cost", variant.getChamberReconstructionCost());
+        if (variant.getExistingChamberTieInCount() != null) gen.writeNumberField("existing_chamber_tie_in_count", variant.getExistingChamberTieInCount());
+        if (variant.getExistingChamberTieInCost() != null) gen.writeNumberField("existing_chamber_tie_in_cost", variant.getExistingChamberTieInCost());
         if (variant.getUnconnectedPenalty() != null) gen.writeNumberField("unconnected_penalty", variant.getUnconnectedPenalty());
         if (variant.getCalculatedCost() != null) gen.writeNumberField("calculated_cost", variant.getCalculatedCost());
         if (variant.getNewNetworkLength() != null) gen.writeNumberField("new_network_length", variant.getNewNetworkLength());
-        if (variant.getReconstructionLength() != null) gen.writeNumberField("reconstruction_length", variant.getReconstructionLength());
-        if (variant.getTotalLength() != null) gen.writeNumberField("total_length", variant.getTotalLength());
         if (variant.getScore() != null) gen.writeNumberField("score", variant.getScore());
-        gen.writeStringField("unconnected_oks_ids", variant.getUnconnectedOksIds() != null ? variant.getUnconnectedOksIds() : "");
+        gen.writeArrayFieldStart("unconnected_oks_ids");
+        gen.writeEndArray();
         gen.writeEndObject();
 
         gen.writeEndObject();

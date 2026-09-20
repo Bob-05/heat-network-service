@@ -29,14 +29,11 @@ public class Variant {
     @Column(name = "chamber_construction_cost")
     private Double chamberConstructionCost;
 
-    @Column(name = "tie_in_cost")
-    private Double tieInCost;
+    @Column(name = "existing_chamber_tie_in_count")
+    private Integer existingChamberTieInCount;
 
-    @Column(name = "reconstruction_cost")
-    private Double reconstructionCost;
-
-    @Column(name = "chamber_reconstruction_cost")
-    private Double chamberReconstructionCost;
+    @Column(name = "existing_chamber_tie_in_cost")
+    private Double existingChamberTieInCost;
 
     @Column(name = "unconnected_penalty")
     private Double unconnectedPenalty;
@@ -46,12 +43,6 @@ public class Variant {
 
     @Column(name = "new_network_length")
     private Double newNetworkLength;
-
-    @Column(name = "reconstruction_length")
-    private Double reconstructionLength;
-
-    @Column(name = "total_length")
-    private Double totalLength;
 
     @Column(name = "score")
     private Double score;
