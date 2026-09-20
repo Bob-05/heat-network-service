@@ -6,7 +6,9 @@
 
 ## 🎯 Назначение
 
-Сервис принимает на вход один GeoJSON-файл с данными о существующей теплосети, камерах, перспективных ОКС (точках подключения) и пространственных ограничениях. На выходе — GeoJSON с готовыми маршрутами новых тепловых сетей, точками врезки, рассчитанными диаметрами и стоимостью.
+Сервис принимает на вход один GeoJSON-файл с данными о существующей теплосети, камерах, точках подключения ОКС и пространственных ограничениях. На выходе — GeoJSON с готовыми маршрутами новых тепловых сетей, тепловыми камерами, техническими узлами и сводкой по вариантам.
+
+**Важно:** реконструкция существующей тепловой сети **не выполняется** (отменена в актуальном ТЗ).
 
 ## 🛠 Стек технологий
 
@@ -17,6 +19,7 @@
 | **База данных** | PostgreSQL 15 + PostGIS 3.3 (в Docker) |
 | **ORM** | Hibernate Spatial 5.6.4 |
 | **Геометрия** | JTS (Java Topology Suite) 1.18.2 |
+| **Проекции** | proj4j 1.2.2 + proj4j-epsg 1.2.2 |
 | **Сборка** | Maven |
 | **Документация API** | Springdoc OpenAPI UI 1.7.0 |
 | **Контейнеризация** | Docker + Docker Compose |
@@ -28,57 +31,58 @@ heat-network-service/
 ├── src/main/java/ru/hackathon/heatnetworkservice/
 │   ├── HeatNetworkServiceApplication.java   ← Точка входа Spring Boot
 │   │
-│   ├── controller/                          ← API-слой (HTTP-запросы)
+│   ├── controller/                          ← API-слой
 │   │   ├── HelloController.java             ← Тестовый эндпоинт
 │   │   ├── GeoJsonReaderController.java     ← Тестовое чтение
 │   │   ├── TaskController.java              ← POST /solve, GET /status, GET /result
-│   │   └── dto/                             ← DTO для запросов/ответов
+│   │   └── dto/
 │   │       └── TaskStatus.java
 │   │
 │   ├── service/                             ← Бизнес-логика
-│   │   ├── GeoJsonReaderService.java        ← Потоковое чтение GeoJSON
-│   │   ├── GeoJsonWriterService.java        ← Потоковая запись GeoJSON
-│   │   ├── TaskService.java                 ← Управление задачами
-│   │   ├── RoutingService.java              ← Построение маршрутов (в разработке)
-│   │   ├── FlowCalculationService.java      ← Расчёт расходов и диаметров (в разработке)
-│   │   ├── ReconstructionService.java       ← Проверка реконструкции (в разработке)
-│   │   ├── CostService.java                 ← Расчёт стоимости (в разработке)
-│   │   └── VariantService.java              ← Формирование вариантов (в разработке)
+│   │   ├── GeoJsonReaderService.java        ← Потоковое чтение GeoJSON ✅
+│   │   ├── GeoJsonWriterService.java        ← Потоковая запись GeoJSON ✅
+│   │   ├── TaskService.java                 ← Управление задачами ✅
+│   │   ├── RoutingService.java              ← Построение маршрутов ❌
+│   │   ├── FlowCalculationService.java      ← Расходы и диаметры ❌
+│   │   ├── CostService.java                 ← Расчёт стоимости ❌
+│   │   └── VariantService.java              ← Формирование вариантов ❌
 │   │
 │   ├── geometry/                            ← Работа с JTS
-│   │   ├── CoordinateTransformer.java       ← WGS84 → UTM37N
-│   │   ├── ObstacleChecker.java             ← Проверка препятствий (в разработке)
-│   │   └── GraphBuilder.java                ← Построение графа (в разработке)
+│   │   ├── CoordinateTransformer.java       ← WGS84 → UTM37N ✅
+│   │   ├── ObstacleChecker.java             ← Проверка препятствий ❌
+│   │   └── GraphBuilder.java                ← Построение графа ❌
 │   │
-│   ├── repository/                          ← Работа с БД (Spring Data JPA)
-│   │   ├── GeoObjectRepository.java
-│   │   ├── NewNetworkRepository.java
-│   │   ├── TieInRepository.java
-│   │   ├── ReconstructionRepository.java
-│   │   └── VariantRepository.java
+│   ├── repository/                          ← Spring Data JPA
+│   │   ├── GeoObjectRepository.java         ✅
+│   │   ├── NewNetworkRepository.java        ✅
+│   │   ├── TieInRepository.java             ✅
+│   │   └── VariantRepository.java           ✅
 │   │
-│   ├── model/                               ← JPA-сущности (таблицы)
-│   │   ├── GeoObject.java
-│   │   ├── NewNetwork.java
-│   │   ├── TieIn.java
-│   │   ├── Reconstruction.java
-│   │   └── Variant.java
+│   ├── model/                               ← JPA-сущности
+│   │   ├── GeoObject.java                   ✅
+│   │   ├── NewNetwork.java                  ✅
+│   │   ├── TieIn.java                       ✅
+│   │   └── Variant.java                     ✅
 │   │
-│   └── config/                              ← Конфигурация (в разработке)
-│       ├── SwaggerConfig.java
-│       └── JacksonConfig.java
+│   └── config/                              ← Конфигурация
+│       ├── SwaggerConfig.java               ❌
+│       └── JacksonConfig.java               ❌
 │
 ├── src/main/resources/
-│   ├── application.yml                      ← Настройки приложения
+│   ├── application.yml                      ← Настройки приложения ✅
 │   └── test-data/
-│       └── test_input.geojson               ← Тестовый GeoJSON
+│       └── test_input.geojson               ← Тестовый GeoJSON (144 объекта)
 │
-├── pom.xml                                  ← Зависимости Maven
-├── Dockerfile                               ← Сборка контейнера (в разработке)
-├── docker-compose.yml                       ← Запуск БД
-├── README.md                                ← Этот файл
-└── .gitignore                               ← Что не коммитить
+├── pom.xml                                  ← Зависимости Maven ✅
+├── Dockerfile                               ← Сборка контейнера ❌
+├── docker-compose.yml                       ← Запуск БД ✅
+├── README.md                                ← Этот файл ✅
+└── .gitignore                               ← Что не коммитить ✅
 ```
+
+**Обозначения:**
+- ✅ — реализовано
+- ❌ — ещё не реализовано
 
 ## 🚀 Быстрый старт
 
@@ -128,6 +132,7 @@ docker ps
 - Swagger UI: `http://localhost:8080/swagger-ui.html`
 - Тестовый эндпоинт: `http://localhost:8080/api/v1/hello`
 - Загрузка файла: `POST /api/v1/solve` (multipart/form-data)
+- Тестовое чтение: `POST /api/v1/read-test`
 
 ## 📖 Документация API
 
@@ -144,10 +149,91 @@ http://localhost:8080/swagger-ui.html
 | `POST` | `/api/v1/solve` | Загрузить GeoJSON-файл, запустить обработку |
 | `GET` | `/api/v1/status/{taskId}` | Проверить статус задачи |
 | `GET` | `/api/v1/result/{taskId}` | Скачать результат обработки |
+| `POST` | `/api/v1/read-test` | Прочитать тестовый GeoJSON из resources |
+
+## 📐 Ключевые правила ТЗ (актуальная версия)
+
+### Входные данные
+
+- **Источник теплоснабжения** (`source`) — Point.
+- **Существующая тепловая сеть** (`heat_network`) — LineString, с `diameter`.
+- **Существующая тепловая камера** (`heat_chamber`) — Point.
+- **Точка подключения ОКС** (`oks_connection_point`) — Point, с `flow_tph`.
+- **Пространственное ограничение** (`restriction`) — LineString / MultiLineString / Polygon / MultiPolygon, с `restriction_type`.
+
+**Типы ограничений:**
+
+| Тип | Правило | Мин. гориз. расстояние | Угол | Kспец |
+|---|---|---|---|---|
+| `oks` | Пересечение запрещено | 5/7/9 м (по ДУ) | — | — |
+| `park` | Пересечение запрещено | 1,0 м | — | — |
+| `social_area` | Пересечение запрещено | 1,0 м | — | — |
+| `prohibited_site` | Пересечение запрещено | 1,0 м | — | — |
+| `water` | Пересечение запрещено | 1,0 м | — | — |
+| `railway` | Пересечение запрещено | 1,0 м | — | — |
+| `road` | Спецпроход | 1,5 м | ≥45° | 1,60 |
+| `tram_tracks` | Спецпроход | 1,5 м | ≥45° | 1,75 |
+| `gas_pipeline` | Спецпроход | 2,0 м | — | 1,25 |
+| `power_cable` | Спецпроход | 2,0 м | — | 1,15 |
+| `heat_network` | Спецпроход | 1,0 м | — | 1,05 |
+
+### Расчётные параметры (Таблица 1)
+
+| ДУ, мм | Пропускная способность, т/ч | Предельная длина, м | Новое строительство, руб./м |
+|---|---|---|---|
+| 50 | 3,5 | 181 | 74 023 |
+| 65 | 8,3 | 245 | 78 631 |
+| 80 | 13,2 | 327 | 83 530 |
+| 100 | 22,3 | 419 | 89 748 |
+| 125 | 40,2 | 554 | 97 275 |
+| 150 | 65,1 | 696 | 105 507 |
+| 200 | 152,3 | 1 042 | 120 275 |
+| 250 | 274,9 | 1 379 | 135 323 |
+| 300 | 437,4 | 1 718 | 150 022 |
+| 400 | 943,1 | 2 477 | 190 299 |
+| 500 | 1 663,4 | 3 245 | 224 137 |
+| 600 | 2 627,7 | 4 037 | 264 790 |
+| 700 | 3 735,1 | 4 775 | 324 298 |
+| 800 | 5 296,8 | 5 644 | 325 996 |
+| 900 | 7 165,0 | 6 518 | 327 693 |
+| 1000 | 9 391,8 | 7 419 | 418 777 |
+| 1200 | 15 012,8 | 9 288 | 428 074 |
+| 1400 | 22 501,9 | 11 276 | 683 417 |
+
+### Стоимость камер и врезок
+
+| Наибольший ДУ примыкающих участков | Стоимость новой камеры, руб. |
+|---|---|
+| 50–200 | 3 000 000 |
+| 250–500 | 5 000 000 |
+| 600–1000 | 8 000 000 |
+| 1200–1400 | 12 000 000 |
+
+**Врезка в существующую камеру** — 5 000 000 руб. за каждый новый линейный участок, заканчивающийся в ней.
+
+### Формула ранжирования
+
+```
+S = 0,7 · (C / 25 000 000) + 0,3 · (L / 100)
+```
+
+где:
+- `C` — итоговая стоимость варианта (`calculated_cost`), руб.
+- `L` — суммарная длина новых участков (`new_network_length`), м.
+
+### Штраф за неподключённые точки
+
+```
+Ш = 100 000 000 + 500 000 · G
+```
+
+где `G` — расчётный расход точки подключения (`flow_tph`), т/ч.
+
+**Важно:** неподключение допускается **только если маршрут не найден**. Намеренный отказ запрещён.
 
 ## 🔄 Git Workflow
 
-Мы используем **feature branch workflow** — простую и эффективную стратегию для команды из 2 человек.
+Мы используем **feature branch workflow**.
 
 ### Основные правила
 
@@ -171,35 +257,12 @@ http://localhost:8080/swagger-ui.html
 
 ### Соглашение об именовании веток
 
-Формат: `<тип>/<краткое-описание>`
-
 | Тип | Назначение | Пример |
 |---|---|---|
 | `feature/` | Новая функциональность | `feature/geojson-reader` |
 | `bugfix/` | Исправление бага | `bugfix/routing-error` |
 | `docs/` | Только документация | `docs/readme-update` |
 | `refactor/` | Рефакторинг без изменения поведения | `refactor/service-layer` |
-
-### Пример работы
-
-```bash
-# 1. Обновить master
-git checkout master
-git pull origin master
-
-# 2. Создать ветку
-git checkout -b feature/geojson-reader
-
-# 3. Работать, коммитить
-git add .
-git commit -m "feat: add streaming GeoJSON reader"
-
-# 4. Запушить
-git push origin feature/geojson-reader
-
-# 5. На GitHub создать Pull Request
-# 6. После мержа удалить ветку
-```
 
 ## 🤝 Как внести вклад
 
@@ -228,8 +291,8 @@ git push origin feature/geojson-reader
 - [x] Настроен Docker Compose для запуска БД
 
 **Модель данных**
-- [x] 5 JPA-сущностей: `GeoObject`, `NewNetwork`, `TieIn`, `Reconstruction`, `Variant`
-- [x] 5 репозиториев для работы с БД
+- [x] 4 JPA-сущности: `GeoObject`, `NewNetwork`, `TieIn`, `Variant` (обновлены под новое ТЗ)
+- [x] 4 репозитория для работы с БД
 - [x] Hibernate автоматически создаёт таблицы
 
 **API-слой**
@@ -241,18 +304,21 @@ git push origin feature/geojson-reader
 
 **Потоковая обработка**
 - [x] `GeoJsonReaderService` — чтение GeoJSON (все типы геометрии)
-- [x] `GeoJsonWriterService` — запись GeoJSON (все типы геометрии)
+- [x] `GeoJsonWriterService` — запись GeoJSON (обновлён под новое ТЗ)
 - [x] `TaskService` — управление задачами
 
 **Геометрия**
 - [x] `CoordinateTransformer` — WGS84 → UTM37N
+
+**Тестирование**
+- [x] Тестовый GeoJSON (144 объекта) прочитан успешно
+- [x] Все 144 объекта сохранены в БД
 
 ### ❌ Что ещё не сделано
 
 **Бизнес-логика (Service)**
 - [ ] `RoutingService` — построение маршрутов
 - [ ] `FlowCalculationService` — расходы и диаметры
-- [ ] `ReconstructionService` — реконструкция существующей сети
 - [ ] `CostService` — расчёт стоимости
 - [ ] `VariantService` — формирование и ранжирование вариантов
 
@@ -289,13 +355,13 @@ git push origin feature/geojson-reader
 - [x] `GeoJsonWriterService`
 - [x] `CoordinateTransformer`
 - [x] `TaskController` (API)
+- [x] Обновление под новое ТЗ (реконструкция отменена)
 
 ### Неделя 2 (22–29 сентября)
 - [ ] `ObstacleChecker`
 - [ ] `GraphBuilder`
 - [ ] `RoutingService`
 - [ ] `FlowCalculationService`
-- [ ] `ReconstructionService`
 - [ ] `CostService`
 - [ ] `VariantService`
 - [ ] `Dockerfile` + объединение docker-compose
