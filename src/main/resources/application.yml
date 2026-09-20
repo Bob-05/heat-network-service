@@ -22,4 +22,6 @@ spring:
 logging:
   level:
     root: INFO
-    ru.hackathon: DEBUG
+    ru.hackathon: INFO
+    ru.hackathon.heatnetworkservice.geometry.ObstacleChecker: WARN
+    ru.hackathon.heatnetworkservice.geometry.GraphBuilder: INFO
