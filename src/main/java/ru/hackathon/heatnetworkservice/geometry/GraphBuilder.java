@@ -3,6 +3,7 @@ package ru.hackathon.heatnetworkservice.geometry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.locationtech.jts.geom.Coordinate;
+import org.locationtech.jts.geom.Envelope;
 import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.LineString;
@@ -11,6 +12,7 @@ import ru.hackathon.heatnetworkservice.model.GeoObject;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 @Slf4j
 @Component
@@ -19,9 +21,13 @@ public class GraphBuilder {
 
     private final GeometryFactory geometryFactory = new GeometryFactory();
     private final ObstacleChecker obstacleChecker;
+    private final CoordinateTransformer coordinateTransformer;
 
     // Максимальное расстояние для ребра (м) — чтобы не строить миллионы рёбер
     private static final double MAX_EDGE_LENGTH = 2000.0;
+
+    // Радиус поиска вершины препятствия от целевого узла (м)
+    private static final double TARGET_OBSTACLE_RADIUS = 500.0;
 
     public static class Edge {
         public String fromId;
@@ -48,130 +54,189 @@ public class GraphBuilder {
 
     /**
      * Узел графа — точка с ID.
+     * Храним координаты и в WGS84 (для вывода), и в UTM37N (для расчётов).
      */
     public static class Node {
         public String id;
-        public Coordinate coordinate;
-        public boolean isTarget; // ОКС или камера
+        public Coordinate coordinateWgs84;
+        public Coordinate coordinateUtm;
+        public boolean isTarget;
 
-        public Node(String id, Coordinate coordinate, boolean isTarget) {
+        public Node(String id, Coordinate coordinateWgs84, Coordinate coordinateUtm, boolean isTarget) {
             this.id = id;
-            this.coordinate = coordinate;
+            this.coordinateWgs84 = coordinateWgs84;
+            this.coordinateUtm = coordinateUtm;
             this.isTarget = isTarget;
         }
     }
 
     /**
+     * Предвычисленное препятствие: UTM-геометрия + Envelope + тип.
+     * Позволяет не преобразовывать координаты на каждой проверке.
+     */
+    private static class PreparedObstacle {
+        final String restrictionType;
+        final Geometry geometryUtm;
+        final Envelope envelope;
+        final boolean forbidden;
+
+        PreparedObstacle(String restrictionType, Geometry geometryUtm, boolean forbidden) {
+            this.restrictionType = restrictionType;
+            this.geometryUtm = geometryUtm;
+            this.envelope = geometryUtm.getEnvelopeInternal();
+            this.forbidden = forbidden;
+        }
+    }
+
+    /**
      * Строит граф с учётом вершин препятствий (visibility graph).
+     * Использует предвычисленные препятствия и многопоточность.
      */
     public List<Edge> buildGraph(List<GeoObject> nodes, List<GeoObject> obstacles, int diameter) {
-        List<Edge> edges = new ArrayList<>();
-
         log.info("Строим граф: {} узлов, {} препятствий, ДУ={}", nodes.size(), obstacles.size(), diameter);
+        long startTime = System.currentTimeMillis();
 
-        // 1. Собираем все узлы: ОКС, камеры + вершины препятствий
-        List<Node> allNodes = new ArrayList<>();
-
-        // Целевые узлы (ОКС + камеры)
+        // 1. Целевые узлы (ОКС + камеры)
+        List<Node> targetNodes = new ArrayList<>();
         for (GeoObject obj : nodes) {
-            Coordinate coord = obj.getGeometry().getCoordinate();
-            allNodes.add(new Node(obj.getId(), coord, true));
+            if (obj.getGeometry() == null) continue;
+            Coordinate wgs84 = obj.getGeometry().getCoordinate();
+            Geometry utmGeom = coordinateTransformer.toUtm37n(obj.getGeometry());
+            if (utmGeom == null) continue;
+            Coordinate utm = utmGeom.getCoordinate();
+            targetNodes.add(new Node(obj.getId(), wgs84, utm, true));
         }
 
-        // Вершины препятствий (для обхода)
-        int obstacleNodeCounter = 0;
+        // 2. Предвычисленные препятствия: UTM-геометрия + Envelope + тип
+        List<PreparedObstacle> preparedObstacles = new ArrayList<>();
         for (GeoObject obstacle : obstacles) {
-            if (obstacle.getGeometry() == null) continue;
             String type = obstacle.getRestrictionType();
-            // Только для запрещённых — нужны точки обхода
-            if (type != null && obstacleChecker.isForbidden(type)) {
-                Coordinate[] coords = obstacle.getGeometry().getCoordinates();
-                for (Coordinate coord : coords) {
-                    allNodes.add(new Node("obs_" + obstacleNodeCounter++, coord, false));
-                }
+            if (type == null || obstacle.getGeometry() == null) continue;
+
+            Geometry utmGeom = coordinateTransformer.toUtm37n(obstacle.getGeometry());
+            if (utmGeom == null) continue;
+
+            boolean forbidden = obstacleChecker.isForbidden(type);
+            preparedObstacles.add(new PreparedObstacle(type, utmGeom, forbidden));
+        }
+        log.info("Целевых узлов: {}, подготовлено препятствий: {}",
+                targetNodes.size(), preparedObstacles.size());
+
+        // 3. Вершины запрещённых препятствий (для visibility graph)
+        List<Node> obstacleNodes = new ArrayList<>();
+        int counter = 0;
+        for (PreparedObstacle po : preparedObstacles) {
+            if (!po.forbidden) continue;
+            for (Coordinate coordUtm : po.geometryUtm.getCoordinates()) {
+                // WGS84 fallback берём из UTM — для obstacle-узлов WGS84 не критичен
+                obstacleNodes.add(new Node("obs_" + counter++, coordUtm, coordUtm, false));
             }
         }
+        log.info("Вершин препятствий: {}", obstacleNodes.size());
 
-        log.info("Всего узлов графа: {} (целевых: {}, вершин препятствий: {})",
-                allNodes.size(), nodes.size(), allNodes.size() - nodes.size());
-
-        // 2. Строим рёбра между парами узлов (только близкими)
-        int totalPairs = 0;
-        int validEdges = 0;
-
-        for (int i = 0; i < allNodes.size(); i++) {
-            for (int j = i + 1; j < allNodes.size(); j++) {
-                Node from = allNodes.get(i);
-                Node to = allNodes.get(j);
-
-                // Пропускаем, если оба — не целевые (вершины препятствий)
-                // Но НЕ пропускаем, если хотя бы один — целевой
-                // (для связности через вершины)
-                if (!from.isTarget && !to.isTarget) {
-                    // Проверяем расстояние — не строим длинные рёбра между вершинами
-                    double dist = from.coordinate.distance(to.coordinate);
-                    if (dist > MAX_EDGE_LENGTH) continue;
-                }
-
-                // Проверяем расстояние между узлами
-                double dist = from.coordinate.distance(to.coordinate);
-                if (dist > MAX_EDGE_LENGTH) continue;
-
-                totalPairs++;
-
-                LineString line = geometryFactory.createLineString(
-                        new Coordinate[]{from.coordinate, to.coordinate});
-                line.setSRID(32637);
-
-                if (isValidEdge(line, obstacles, diameter, from, to)) {
-                    double kspec = calculateMaxKspec(line, obstacles);
-                    String layingMethod = (kspec > 1.0) ? "special" : "base";
-                    double costPerMeter = getCostPerMeter(diameter);
-                    double cost = dist * costPerMeter * kspec;
-
-                    edges.add(new Edge(from.id, to.id, line, dist, cost, layingMethod, kspec, diameter));
-                    validEdges++;
-                }
+        // 4. Рёбра между целевыми узлами — параллельно
+        ConcurrentLinkedQueue<Edge> edgesTargetTarget = new ConcurrentLinkedQueue<>();
+        List<int[]> targetPairs = new ArrayList<>();
+        for (int i = 0; i < targetNodes.size(); i++) {
+            for (int j = i + 1; j < targetNodes.size(); j++) {
+                targetPairs.add(new int[]{i, j});
             }
         }
+        targetPairs.parallelStream().forEach(pair -> {
+            Node from = targetNodes.get(pair[0]);
+            Node to = targetNodes.get(pair[1]);
+            Edge edge = tryBuildEdge(from, to, preparedObstacles, diameter);
+            if (edge != null) {
+                edgesTargetTarget.add(edge);
+            }
+        });
+        log.info("Рёбер между целевыми: {}", edgesTargetTarget.size());
 
-        log.info("Проверено пар: {}, валидных рёбер: {}", totalPairs, validEdges);
-        return edges;
+        // 5. Рёбра целевой ↔ близкая вершина препятствия — параллельно по целевым
+        ConcurrentLinkedQueue<Edge> edgesTargetObstacle = new ConcurrentLinkedQueue<>();
+        targetNodes.parallelStream().forEach(target -> {
+            for (Node obsNode : obstacleNodes) {
+                double dist = target.coordinateUtm.distance(obsNode.coordinateUtm);
+                if (dist > TARGET_OBSTACLE_RADIUS) continue;
+
+                Edge edge = tryBuildEdge(target, obsNode, preparedObstacles, diameter);
+                if (edge != null) {
+                    edgesTargetObstacle.add(edge);
+                }
+            }
+        });
+        log.info("Рёбер целевой-препятствие: {}", edgesTargetObstacle.size());
+
+        // 6. Объединяем результаты
+        List<Edge> allEdges = new ArrayList<>(edgesTargetTarget.size() + edgesTargetObstacle.size());
+        allEdges.addAll(edgesTargetTarget);
+        allEdges.addAll(edgesTargetObstacle);
+
+        long elapsed = System.currentTimeMillis() - startTime;
+        log.info("Итого рёбер: {}, время построения графа: {} мс", allEdges.size(), elapsed);
+        return allEdges;
+    }
+
+    /**
+     * Пробует построить ребро между двумя узлами.
+     * Возвращает null, если ребро невалидно.
+     */
+    private Edge tryBuildEdge(Node from, Node to, List<PreparedObstacle> prepared, int diameter) {
+        // Создаём линию в UTM37N
+        LineString line = geometryFactory.createLineString(
+                new Coordinate[]{from.coordinateUtm, to.coordinateUtm});
+        line.setSRID(32637);
+
+        if (!isValidEdge(line, prepared, diameter, from, to)) {
+            return null;
+        }
+
+        // Длина в метрах — корректно, так как координаты в UTM
+        double dist = from.coordinateUtm.distance(to.coordinateUtm);
+        double kspec = calculateMaxKspec(line, prepared);
+        String layingMethod = (kspec > 1.0) ? "special" : "base";
+        double costPerMeter = getCostPerMeter(diameter);
+        double cost = dist * costPerMeter * kspec;
+
+        return new Edge(from.id, to.id, line, dist, cost, layingMethod, kspec, diameter);
     }
 
     /**
      * Проверяет, можно ли провести трубу по прямой.
+     * Работает с предвычисленными препятствиями (UTM + Envelope).
      */
-    private boolean isValidEdge(LineString line, List<GeoObject> obstacles, int diameter,
+    private boolean isValidEdge(LineString line, List<PreparedObstacle> prepared, int diameter,
                                 Node from, Node to) {
-        for (GeoObject obstacle : obstacles) {
-            String restrictionType = obstacle.getRestrictionType();
-            if (restrictionType == null) continue;
+        // Bounding box в UTM-координатах
+        double minX = Math.min(from.coordinateUtm.x, to.coordinateUtm.x) - 100;
+        double maxX = Math.max(from.coordinateUtm.x, to.coordinateUtm.x) + 100;
+        double minY = Math.min(from.coordinateUtm.y, to.coordinateUtm.y) - 100;
+        double maxY = Math.max(from.coordinateUtm.y, to.coordinateUtm.y) + 100;
 
-            Geometry obstacleGeom = obstacle.getGeometry();
-            if (obstacleGeom == null) continue;
+        for (PreparedObstacle po : prepared) {
+            // Быстрая проверка: если bounding box препятствия далеко — пропускаем
+            Envelope env = po.envelope;
+            if (env.getMaxX() < minX || env.getMinX() > maxX ||
+                    env.getMaxY() < minY || env.getMinY() > maxY) {
+                continue;
+            }
 
-            boolean intersects = line.intersects(obstacleGeom);
+            boolean intersects = line.intersects(po.geometryUtm);
 
-            if (obstacleChecker.isForbidden(restrictionType)) {
-                // Запрещено пересекать
+            if (po.forbidden) {
                 if (intersects) {
-                    // Особый случай: если один из концов — целевой узел ВНУТРИ этого полигона
-                    // и это финальный участок — разрешаем (по разъяснению 3)
-                    if ("oks".equals(restrictionType) && isFinalSegmentForOks(from, to, obstacleGeom)) {
+                    if ("oks".equals(po.restrictionType) && isFinalSegmentForOks(from, to, po.geometryUtm)) {
                         continue;
                     }
                     return false;
                 }
             } else {
-                // Разрешено пересекать (спецпроход)
                 if (intersects) {
-                    if (!obstacleChecker.isAngleOk(line, obstacleGeom, restrictionType)) {
+                    if (!obstacleChecker.isAngleOk(line, po.geometryUtm, po.restrictionType)) {
                         return false;
                     }
                 } else {
-                    // Не пересекает — проверяем расстояние
-                    if (!obstacleChecker.isDistanceOk(line, obstacleGeom, restrictionType, diameter)) {
+                    if (!obstacleChecker.isDistanceOk(line, po.geometryUtm, po.restrictionType, diameter)) {
                         return false;
                     }
                 }
@@ -185,35 +250,35 @@ public class GraphBuilder {
      * Если один из концов внутри полигона OKS, а другой — снаружи,
      * и это линия к целевой точке — разрешаем (по разъяснению 3).
      */
-    private boolean isFinalSegmentForOks(Node from, Node to, Geometry oksPolygon) {
-        boolean fromInside = oksPolygon.contains(geometryFactory.createPoint(from.coordinate));
-        boolean toInside = oksPolygon.contains(geometryFactory.createPoint(to.coordinate));
+    private boolean isFinalSegmentForOks(Node from, Node to, Geometry oksPolygonUtm) {
+        boolean fromInside = oksPolygonUtm.contains(
+                geometryFactory.createPoint(from.coordinateUtm));
+        boolean toInside = oksPolygonUtm.contains(
+                geometryFactory.createPoint(to.coordinateUtm));
 
         // Один внутри, другой снаружи — это финальный участок к ОКС
-        if (fromInside != toInside) {
-            // Проверяем, что целевой узел — ОКС (не камера)
-            // Для простоты: считаем, что если внутри полигона — это ОКС
-            return true;
-        }
-        return false;
+        return fromInside != toInside;
     }
 
-    private double calculateMaxKspec(LineString line, List<GeoObject> obstacles) {
+    /**
+     * Вычисляет максимальный Kспец для линии (среди всех пересекаемых разрешённых ограничений).
+     * По ТЗ при наложении спецпроходов применяется наибольший коэффициент.
+     */
+    private double calculateMaxKspec(LineString line, List<PreparedObstacle> prepared) {
         double maxKspec = 1.0;
-        for (GeoObject obstacle : obstacles) {
-            String restrictionType = obstacle.getRestrictionType();
-            if (restrictionType == null) continue;
-            Geometry obstacleGeom = obstacle.getGeometry();
-            if (obstacleGeom == null) continue;
-
-            if (line.intersects(obstacleGeom)) {
-                double kspec = obstacleChecker.getKspec(restrictionType);
+        for (PreparedObstacle po : prepared) {
+            if (po.forbidden) continue;
+            if (line.intersects(po.geometryUtm)) {
+                double kspec = obstacleChecker.getKspec(po.restrictionType);
                 if (kspec > maxKspec) maxKspec = kspec;
             }
         }
         return maxKspec;
     }
 
+    /**
+     * Стоимость 1 метра для ДУ (Таблица 1).
+     */
     private double getCostPerMeter(int diameter) {
         switch (diameter) {
             case 50: return 74023;
