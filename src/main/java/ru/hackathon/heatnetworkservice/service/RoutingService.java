@@ -24,13 +24,15 @@ public class RoutingService {
      */
     public static class Route {
         public String oksId;          // ID точки подключения ОКС
+        public Double oksFlowTph;     // Расход точки ОКС, т/ч
         public String chamberId;      // ID существующей камеры
         public List<GraphBuilder.Edge> edges; // участки пути
         public double totalLength;    // общая длина
-        public double totalCost;      // общая стоимость
+        public double totalCost;      // общая стоимость (по «сырым» рёбрам)
 
-        public Route(String oksId, String chamberId, List<GraphBuilder.Edge> edges) {
+        public Route(String oksId, Double oksFlowTph, String chamberId, List<GraphBuilder.Edge> edges) {
             this.oksId = oksId;
+            this.oksFlowTph = oksFlowTph;
             this.chamberId = chamberId;
             this.edges = edges;
             this.totalLength = edges.stream().mapToDouble(e -> e.length).sum();
@@ -44,7 +46,7 @@ public class RoutingService {
      * @param oksPoints    точки подключения ОКС
      * @param chambers     существующие тепловые камеры
      * @param obstacles    все препятствия
-     * @param diameter     ДУ новой сети (для проверки)
+     * @param diameter     ДУ новой сети (для проверки препятствий)
      * @return список маршрутов
      */
     public List<Route> buildRoutes(
@@ -138,10 +140,10 @@ public class RoutingService {
             if (visited.contains(current)) continue;
             visited.add(current);
 
-            // Если дошли до камеры — запоминаем и продолжаем (нужна ближайшая)
+            // Если дошли до камеры — запоминаем и выходим (нужна ближайшая)
             if (chamberIds.contains(current)) {
                 closestChamber = current;
-                break; // Дейкстра гарантирует, что это ближайшая
+                break;
             }
 
             // Просматриваем соседей
@@ -174,6 +176,6 @@ public class RoutingService {
             current = edge.fromId.equals(current) ? edge.toId : edge.fromId;
         }
 
-        return new Route(startId, closestChamber, path);
+        return new Route(startId, oks.getFlowTph(), closestChamber, path);
     }
 }

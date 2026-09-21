@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import ru.hackathon.heatnetworkservice.model.GeoObject;
 import ru.hackathon.heatnetworkservice.repository.GeoObjectRepository;
+import ru.hackathon.heatnetworkservice.service.FlowCalculationService;
 import ru.hackathon.heatnetworkservice.service.RoutingService;
 
 import java.util.ArrayList;
@@ -27,10 +28,11 @@ public class RoutingController {
 
     private final GeoObjectRepository geoObjectRepository;
     private final RoutingService routingService;
+    private final FlowCalculationService flowCalculationService;
 
     @PostMapping("/test-routing")
     @Operation(summary = "Тест маршрутизации",
-            description = "Строит маршруты для всех ОКС до ближайших камер")
+            description = "Строит маршруты для всех ОКС до ближайших камер и подбирает ДУ")
     public ResponseEntity<Map<String, Object>> testRouting(
             @RequestParam(value = "diameter", defaultValue = "300") Integer diameter
     ) {
@@ -58,29 +60,46 @@ public class RoutingController {
             log.info("ОКС: {}, Камеры: {}, Препятствия: {}",
                     oksPoints.size(), chambers.size(), obstacles.size());
 
-            // Строим маршруты
+            // Строим маршруты (diameter — заглушка для проверки препятствий)
             List<RoutingService.Route> routes = routingService.buildRoutes(
                     oksPoints, chambers, obstacles, diameter);
+
+            // Рассчитываем ДУ для каждого маршрута
+            List<FlowCalculationService.CalculatedSegment> segments =
+                    flowCalculationService.calculateSegments(routes);
 
             // Формируем ответ
             Map<String, Object> result = new HashMap<>();
             result.put("status", "OK");
-            result.put("diameter", diameter);
+            result.put("input_diameter_stub", diameter);
             result.put("oks_count", oksPoints.size());
             result.put("chambers_count", chambers.size());
             result.put("obstacles_count", obstacles.size());
             result.put("routes_built", routes.size());
             result.put("routes_not_built", oksPoints.size() - routes.size());
+            result.put("segments_count", segments.size());
 
             // Детали по маршрутам
             List<Map<String, Object>> routeDetails = new ArrayList<>();
             for (RoutingService.Route route : routes) {
                 Map<String, Object> detail = new HashMap<>();
                 detail.put("oks_id", route.oksId);
+                detail.put("oks_flow_tph", route.oksFlowTph);
                 detail.put("chamber_id", route.chamberId);
                 detail.put("edges_count", route.edges.size());
                 detail.put("total_length_m", Math.round(route.totalLength));
-                detail.put("total_cost_rub", Math.round(route.totalCost));
+
+                // Находим ДУ и стоимость по сегментам этого ОКС
+                int diameter2 = 0;
+                double totalCost = 0;
+                for (FlowCalculationService.CalculatedSegment seg : segments) {
+                    if (seg.oksId.equals(route.oksId)) {
+                        diameter2 = seg.diameter;
+                        totalCost += seg.cost;
+                    }
+                }
+                detail.put("diameter", diameter2);
+                detail.put("total_cost_rub", Math.round(totalCost));
                 routeDetails.add(detail);
             }
             result.put("routes", routeDetails);
