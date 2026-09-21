@@ -31,17 +31,16 @@ public class RoutingController {
 
     @PostMapping("/test-routing")
     @Operation(summary = "Тест формирования вариантов",
-            description = "Строит до 3 вариантов подключения ОКС и ранжирует их по score")
+            description = "Строит до 3 вариантов подключения ОКС и ранжирует по score")
     public ResponseEntity<Map<String, Object>> testRouting() {
         try {
-            // Загружаем объекты из БД
             List<GeoObject> allObjects = geoObjectRepository.findAll();
             log.info("Загружено объектов из БД: {}", allObjects.size());
 
-            // Разделяем по типам
             List<GeoObject> oksPoints = new ArrayList<>();
             List<GeoObject> chambers = new ArrayList<>();
             List<GeoObject> obstacles = new ArrayList<>();
+            List<GeoObject> existingNetworks = new ArrayList<>();
 
             for (GeoObject obj : allObjects) {
                 String type = obj.getObjectType();
@@ -51,28 +50,28 @@ public class RoutingController {
                     chambers.add(obj);
                 } else if ("restriction".equals(type)) {
                     obstacles.add(obj);
+                } else if ("heat_network".equals(type)) {
+                    existingNetworks.add(obj);
                 }
             }
 
-            log.info("ОКС: {}, Камеры: {}, Препятствия: {}",
-                    oksPoints.size(), chambers.size(), obstacles.size());
+            log.info("ОКС: {}, Камеры: {}, Препятствия: {}, Сети: {}",
+                    oksPoints.size(), chambers.size(), obstacles.size(), existingNetworks.size());
 
-            // Формируем варианты
             long startTime = System.currentTimeMillis();
             List<VariantService.Variant> variants = variantService.buildVariants(
-                    oksPoints, chambers, obstacles);
+                    oksPoints, chambers, obstacles, existingNetworks);
             long elapsed = System.currentTimeMillis() - startTime;
 
-            // Формируем ответ
             Map<String, Object> result = new HashMap<>();
             result.put("status", "OK");
             result.put("oks_count", oksPoints.size());
             result.put("chambers_count", chambers.size());
             result.put("obstacles_count", obstacles.size());
+            result.put("networks_count", existingNetworks.size());
             result.put("variants_count", variants.size());
             result.put("elapsed_ms", elapsed);
 
-            // Детали по вариантам
             List<Map<String, Object>> variantDetails = new ArrayList<>();
             for (VariantService.Variant v : variants) {
                 Map<String, Object> vd = new HashMap<>();
@@ -80,17 +79,16 @@ public class RoutingController {
                 vd.put("rank", v.rank);
                 vd.put("weight_type", v.weightType.name());
 
-                // Маршруты
                 List<Map<String, Object>> routeDetails = new ArrayList<>();
                 for (RoutingService.Route route : v.routes) {
                     Map<String, Object> rd = new HashMap<>();
                     rd.put("oks_id", route.oksId);
                     rd.put("oks_flow_tph", route.oksFlowTph);
-                    rd.put("chamber_id", route.chamberId);
+                    rd.put("end_node_id", route.endNodeId);
+                    rd.put("end_is_chamber", route.endIsChamber);
                     rd.put("edges_count", route.edges.size());
                     rd.put("total_length_m", Math.round(route.totalLength));
 
-                    // ДУ этого маршрута
                     int diameter = 0;
                     double routeCost = 0;
                     for (FlowCalculationService.CalculatedSegment seg : v.segments) {
@@ -105,7 +103,6 @@ public class RoutingController {
                 }
                 vd.put("routes", routeDetails);
 
-                // Стоимость
                 Map<String, Object> costMap = new HashMap<>();
                 costMap.put("construction_cost", Math.round(v.cost.constructionCost));
                 costMap.put("chamber_construction_cost", Math.round(v.cost.chamberConstructionCost));

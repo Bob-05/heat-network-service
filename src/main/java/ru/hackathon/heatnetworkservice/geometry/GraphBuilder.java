@@ -23,11 +23,17 @@ public class GraphBuilder {
     private final ObstacleChecker obstacleChecker;
     private final CoordinateTransformer coordinateTransformer;
 
-    // Максимальное расстояние для ребра (м) — чтобы не строить миллионы рёбер
+    /** Максимальное расстояние для ребра (м) */
     private static final double MAX_EDGE_LENGTH = 2000.0;
 
-    // Радиус поиска вершины препятствия от целевого узла (м)
+    /** Радиус поиска вершины препятствия от целевого узла (м) */
     private static final double TARGET_OBSTACLE_RADIUS = 500.0;
+
+    /** Шаг разбиения существующих сетей на точки (м) */
+    private static final double NETWORK_SPLIT_STEP_M = 2.0;
+
+    /** Радиус вокруг ОКС, в котором добавляем точки сетей (м) */
+    private static final double NETWORK_POINT_RADIUS_M = 300.0;
 
     public static class Edge {
         public String fromId;
@@ -52,28 +58,23 @@ public class GraphBuilder {
         }
     }
 
-    /**
-     * Узел графа — точка с ID.
-     * Храним координаты и в WGS84 (для вывода), и в UTM37N (для расчётов).
-     */
     public static class Node {
         public String id;
         public Coordinate coordinateWgs84;
         public Coordinate coordinateUtm;
         public boolean isTarget;
+        public boolean isNetworkPoint;
 
-        public Node(String id, Coordinate coordinateWgs84, Coordinate coordinateUtm, boolean isTarget) {
+        public Node(String id, Coordinate coordinateWgs84, Coordinate coordinateUtm,
+                    boolean isTarget, boolean isNetworkPoint) {
             this.id = id;
             this.coordinateWgs84 = coordinateWgs84;
             this.coordinateUtm = coordinateUtm;
             this.isTarget = isTarget;
+            this.isNetworkPoint = isNetworkPoint;
         }
     }
 
-    /**
-     * Предвычисленное препятствие: UTM-геометрия + Envelope + тип.
-     * Позволяет не преобразовывать координаты на каждой проверке.
-     */
     private static class PreparedObstacle {
         final String restrictionType;
         final Geometry geometryUtm;
@@ -89,11 +90,19 @@ public class GraphBuilder {
     }
 
     /**
-     * Строит граф с учётом вершин препятствий (visibility graph).
-     * Использует предвычисленные препятствия и многопоточность.
+     * Строит граф: целевые узлы (ОКС + камеры) + точки существующих сетей.
+     * Точки сетей добавляются только в радиусе NETWORK_POINT_RADIUS_M от любой ОКС.
      */
-    public List<Edge> buildGraph(List<GeoObject> nodes, List<GeoObject> obstacles, int diameter) {
-        log.info("Строим граф: {} узлов, {} препятствий, ДУ={}", nodes.size(), obstacles.size(), diameter);
+    public List<Edge> buildGraph(
+            List<GeoObject> nodes,          // ОКС + камеры
+            List<GeoObject> oksPoints,      // только ОКС (для расчёта радиуса)
+            List<GeoObject> obstacles,
+            List<GeoObject> existingNetworks,
+            int diameter
+    ) {
+        log.info("Строим граф: {} узлов, {} ОКС, {} препятствий, {} сетей, ДУ={}",
+                nodes.size(), oksPoints.size(), obstacles.size(),
+                existingNetworks.size(), diameter);
         long startTime = System.currentTimeMillis();
 
         // 1. Целевые узлы (ОКС + камеры)
@@ -104,10 +113,58 @@ public class GraphBuilder {
             Geometry utmGeom = coordinateTransformer.toUtm37n(obj.getGeometry());
             if (utmGeom == null) continue;
             Coordinate utm = utmGeom.getCoordinate();
-            targetNodes.add(new Node(obj.getId(), wgs84, utm, true));
+            targetNodes.add(new Node(obj.getId(), wgs84, utm, true, false));
         }
 
-        // 2. Предвычисленные препятствия: UTM-геометрия + Envelope + тип
+        // 2. Точки существующих сетей — только в радиусе от ОКС
+        List<Coordinate> oksCoordsUtm = new ArrayList<>();
+        for (GeoObject oks : oksPoints) {
+            if (oks.getGeometry() == null) continue;
+            Geometry utmGeom = coordinateTransformer.toUtm37n(oks.getGeometry());
+            if (utmGeom != null) oksCoordsUtm.add(utmGeom.getCoordinate());
+        }
+
+        List<Node> networkNodes = new ArrayList<>();
+        int networkPointCounter = 0;
+        for (GeoObject net : existingNetworks) {
+            if (net.getGeometry() == null) continue;
+            Geometry utmGeom = coordinateTransformer.toUtm37n(net.getGeometry());
+            if (utmGeom == null) continue;
+
+            // Разбиваем линию на точки с шагом NETWORK_SPLIT_STEP_M
+            Coordinate[] coords = utmGeom.getCoordinates();
+            for (int i = 0; i < coords.length - 1; i++) {
+                Coordinate a = coords[i];
+                Coordinate b = coords[i + 1];
+                double segLen = a.distance(b);
+                int steps = (int) Math.ceil(segLen / NETWORK_SPLIT_STEP_M);
+
+                for (int s = 0; s <= steps; s++) {
+                    double t = (double) s / steps;
+                    double x = a.x + t * (b.x - a.x);
+                    double y = a.y + t * (b.y - a.y);
+                    Coordinate point = new Coordinate(x, y);
+
+                    // Проверяем, что точка в радиусе от какой-нибудь ОКС
+                    boolean nearOks = false;
+                    for (Coordinate oksCoord : oksCoordsUtm) {
+                        if (point.distance(oksCoord) <= NETWORK_POINT_RADIUS_M) {
+                            nearOks = true;
+                            break;
+                        }
+                    }
+                    if (!nearOks) continue;
+
+                    String netPointId = "net_" + net.getId() + "_" + (networkPointCounter++);
+                    networkNodes.add(new Node(netPointId, point, point, true, true));
+                }
+            }
+        }
+
+        log.info("Целевых узлов: {} (ОКС+камеры), точек сетей: {}",
+                targetNodes.size(), networkNodes.size());
+
+        // 3. Предвычисленные препятствия
         List<PreparedObstacle> preparedObstacles = new ArrayList<>();
         for (GeoObject obstacle : obstacles) {
             String type = obstacle.getRestrictionType();
@@ -119,46 +176,54 @@ public class GraphBuilder {
             boolean forbidden = obstacleChecker.isForbidden(type);
             preparedObstacles.add(new PreparedObstacle(type, utmGeom, forbidden));
         }
-        log.info("Целевых узлов: {}, подготовлено препятствий: {}",
-                targetNodes.size(), preparedObstacles.size());
+        log.info("Подготовлено препятствий: {}", preparedObstacles.size());
 
-        // 3. Вершины запрещённых препятствий (для visibility graph)
+        // 4. Вершины запрещённых препятствий
         List<Node> obstacleNodes = new ArrayList<>();
         int counter = 0;
         for (PreparedObstacle po : preparedObstacles) {
             if (!po.forbidden) continue;
             for (Coordinate coordUtm : po.geometryUtm.getCoordinates()) {
-                // WGS84 fallback берём из UTM — для obstacle-узлов WGS84 не критичен
-                obstacleNodes.add(new Node("obs_" + counter++, coordUtm, coordUtm, false));
+                obstacleNodes.add(new Node("obs_" + counter++, coordUtm, coordUtm, false, false));
             }
         }
         log.info("Вершин препятствий: {}", obstacleNodes.size());
 
-        // 4. Рёбра между целевыми узлами — параллельно
-        ConcurrentLinkedQueue<Edge> edgesTargetTarget = new ConcurrentLinkedQueue<>();
-        List<int[]> targetPairs = new ArrayList<>();
-        for (int i = 0; i < targetNodes.size(); i++) {
-            for (int j = i + 1; j < targetNodes.size(); j++) {
-                targetPairs.add(new int[]{i, j});
-            }
-        }
-        targetPairs.parallelStream().forEach(pair -> {
-            Node from = targetNodes.get(pair[0]);
-            Node to = targetNodes.get(pair[1]);
-            Edge edge = tryBuildEdge(from, to, preparedObstacles, diameter);
-            if (edge != null) {
-                edgesTargetTarget.add(edge);
+        // Собираем все целевые узлы (ОКС + камеры + точки сетей)
+        List<Node> allTargetNodes = new ArrayList<>();
+        allTargetNodes.addAll(targetNodes);
+        allTargetNodes.addAll(networkNodes);
+
+        // 5. Рёбра между ОКС/камерами и точками сетей (только целевой ↔ network point)
+        ConcurrentLinkedQueue<Edge> edgesTargetNetwork = new ConcurrentLinkedQueue<>();
+        allTargetNodes.parallelStream().forEach(from -> {
+            for (Node to : allTargetNodes) {
+                if (from == to) continue;
+                // Если оба — точки сетей, не строим (мы не идём по сети)
+                if (from.isNetworkPoint && to.isNetworkPoint) continue;
+                // Если оба — обычные целевые (ОКС/камеры), строим (как раньше)
+                if (!from.isNetworkPoint && !to.isNetworkPoint) {
+                    // Проверяем только один раз (i < j)
+                    if (from.id.compareTo(to.id) >= 0) continue;
+                }
+                // Если один из них — точка сети, а другой — целевой, строим
+                double dist = from.coordinateUtm.distance(to.coordinateUtm);
+                if (dist > MAX_EDGE_LENGTH) continue;
+
+                Edge edge = tryBuildEdge(from, to, preparedObstacles, diameter);
+                if (edge != null) {
+                    edgesTargetNetwork.add(edge);
+                }
             }
         });
-        log.info("Рёбер между целевыми: {}", edgesTargetTarget.size());
+        log.info("Рёбер целевой-сеть: {}", edgesTargetNetwork.size());
 
-        // 5. Рёбра целевой ↔ близкая вершина препятствия — параллельно по целевым
+        // 6. Рёбра между целевыми и близкими вершинами препятствий (радиус 500 м)
         ConcurrentLinkedQueue<Edge> edgesTargetObstacle = new ConcurrentLinkedQueue<>();
         targetNodes.parallelStream().forEach(target -> {
             for (Node obsNode : obstacleNodes) {
                 double dist = target.coordinateUtm.distance(obsNode.coordinateUtm);
                 if (dist > TARGET_OBSTACLE_RADIUS) continue;
-
                 Edge edge = tryBuildEdge(target, obsNode, preparedObstacles, diameter);
                 if (edge != null) {
                     edgesTargetObstacle.add(edge);
@@ -167,9 +232,9 @@ public class GraphBuilder {
         });
         log.info("Рёбер целевой-препятствие: {}", edgesTargetObstacle.size());
 
-        // 6. Объединяем результаты
-        List<Edge> allEdges = new ArrayList<>(edgesTargetTarget.size() + edgesTargetObstacle.size());
-        allEdges.addAll(edgesTargetTarget);
+        // 7. Объединяем результаты
+        List<Edge> allEdges = new ArrayList<>();
+        allEdges.addAll(edgesTargetNetwork);
         allEdges.addAll(edgesTargetObstacle);
 
         long elapsed = System.currentTimeMillis() - startTime;
@@ -177,12 +242,7 @@ public class GraphBuilder {
         return allEdges;
     }
 
-    /**
-     * Пробует построить ребро между двумя узлами.
-     * Возвращает null, если ребро невалидно.
-     */
     private Edge tryBuildEdge(Node from, Node to, List<PreparedObstacle> prepared, int diameter) {
-        // Создаём линию в UTM37N
         LineString line = geometryFactory.createLineString(
                 new Coordinate[]{from.coordinateUtm, to.coordinateUtm});
         line.setSRID(32637);
@@ -191,7 +251,6 @@ public class GraphBuilder {
             return null;
         }
 
-        // Длина в метрах — корректно, так как координаты в UTM
         double dist = from.coordinateUtm.distance(to.coordinateUtm);
         double kspec = calculateMaxKspec(line, prepared);
         String layingMethod = (kspec > 1.0) ? "special" : "base";
@@ -201,20 +260,14 @@ public class GraphBuilder {
         return new Edge(from.id, to.id, line, dist, cost, layingMethod, kspec, diameter);
     }
 
-    /**
-     * Проверяет, можно ли провести трубу по прямой.
-     * Работает с предвычисленными препятствиями (UTM + Envelope).
-     */
     private boolean isValidEdge(LineString line, List<PreparedObstacle> prepared, int diameter,
                                 Node from, Node to) {
-        // Bounding box в UTM-координатах
         double minX = Math.min(from.coordinateUtm.x, to.coordinateUtm.x) - 100;
         double maxX = Math.max(from.coordinateUtm.x, to.coordinateUtm.x) + 100;
         double minY = Math.min(from.coordinateUtm.y, to.coordinateUtm.y) - 100;
         double maxY = Math.max(from.coordinateUtm.y, to.coordinateUtm.y) + 100;
 
         for (PreparedObstacle po : prepared) {
-            // Быстрая проверка: если bounding box препятствия далеко — пропускаем
             Envelope env = po.envelope;
             if (env.getMaxX() < minX || env.getMinX() > maxX ||
                     env.getMaxY() < minY || env.getMinY() > maxY) {
@@ -245,25 +298,14 @@ public class GraphBuilder {
         return true;
     }
 
-    /**
-     * Проверяет, является ли отрезок финальным для OKS.
-     * Если один из концов внутри полигона OKS, а другой — снаружи,
-     * и это линия к целевой точке — разрешаем (по разъяснению 3).
-     */
     private boolean isFinalSegmentForOks(Node from, Node to, Geometry oksPolygonUtm) {
         boolean fromInside = oksPolygonUtm.contains(
                 geometryFactory.createPoint(from.coordinateUtm));
         boolean toInside = oksPolygonUtm.contains(
                 geometryFactory.createPoint(to.coordinateUtm));
-
-        // Один внутри, другой снаружи — это финальный участок к ОКС
         return fromInside != toInside;
     }
 
-    /**
-     * Вычисляет максимальный Kспец для линии (среди всех пересекаемых разрешённых ограничений).
-     * По ТЗ при наложении спецпроходов применяется наибольший коэффициент.
-     */
     private double calculateMaxKspec(LineString line, List<PreparedObstacle> prepared) {
         double maxKspec = 1.0;
         for (PreparedObstacle po : prepared) {
@@ -276,9 +318,6 @@ public class GraphBuilder {
         return maxKspec;
     }
 
-    /**
-     * Стоимость 1 метра для ДУ (Таблица 1).
-     */
     private double getCostPerMeter(int diameter) {
         switch (diameter) {
             case 50: return 74023;

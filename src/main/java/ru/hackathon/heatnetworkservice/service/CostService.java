@@ -8,63 +8,31 @@ import ru.hackathon.heatnetworkservice.model.GeoObject;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Сервис расчёта стоимости варианта.
- *
- * По ТЗ:
- * - Стоимость обычного участка: L · cнов(ДУ) · Kгл.
- * - Стоимость специального участка: L · cнов(ДУ) · Kгл · Kспец.
- * - Стоимость камер — по наибольшему ДУ примыкающих участков (Таблица 3.2).
- * - Врезка в существующую камеру — 5 000 000 руб. за каждое примыкание.
- * - Штраф за неподключённую точку: 100 000 000 + 500 000 · G.
- * - Итоговая стоимость: construction_cost + unconnected_penalty.
- * - Score: 0,7 · (C / 25 000 000) + 0,3 · (L / 100).
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class CostService {
 
-    /** Стоимость врезки в существующую камеру (руб.) */
     private static final double TIE_IN_COST = 5_000_000.0;
-
-    /** Штраф за неподключённую точку (базовая часть, руб.) */
     private static final double UNCONNECTED_BASE_PENALTY = 100_000_000.0;
-
-    /** Штраф за неподключённую точку (за 1 т/ч расхода, руб.) */
     private static final double UNCONNECTED_FLOW_PENALTY = 500_000.0;
-
-    /** Коэффициент для score (стоимость) */
     private static final double SCORE_COST_WEIGHT = 0.7;
     private static final double SCORE_COST_DIVISOR = 25_000_000.0;
-
-    /** Коэффициент для score (длина) */
     private static final double SCORE_LENGTH_WEIGHT = 0.3;
     private static final double SCORE_LENGTH_DIVISOR = 100.0;
 
-    /**
-     * Результат расчёта стоимости одного варианта.
-     */
     public static class CostResult {
-        public double constructionCost;              // стоимость строительства
-        public double chamberConstructionCost;       // стоимость новых камер
-        public int existingChamberTieInCount;        // количество врезок в существующие камеры
-        public double existingChamberTieInCost;      // стоимость врезок
-        public double unconnectedPenalty;            // штраф за неподключённые точки
-        public double calculatedCost;                // итоговая стоимость
-        public double newNetworkLength;              // суммарная длина новых участков
-        public double score;                         // итоговый показатель
-        public List<String> unconnectedOksIds;       // ID неподключённых ОКС
+        public double constructionCost;
+        public double chamberConstructionCost;
+        public int existingChamberTieInCount;
+        public double existingChamberTieInCost;
+        public double unconnectedPenalty;
+        public double calculatedCost;
+        public double newNetworkLength;
+        public double score;
+        public List<String> unconnectedOksIds;
     }
 
-    /**
-     * Рассчитывает стоимость варианта.
-     *
-     * @param segments          список рассчитанных участков
-     * @param connectedOksIds   ID подключённых ОКС
-     * @param allOks            все точки ОКС (для определения неподключённых)
-     * @return результат расчёта
-     */
     public CostResult calculate(
             List<FlowCalculationService.CalculatedSegment> segments,
             List<String> connectedOksIds,
@@ -75,7 +43,7 @@ public class CostService {
 
         CostResult result = new CostResult();
 
-        // 1. Стоимость участков (уже рассчитана в FlowCalculationService)
+        // 1. Стоимость участков
         double segmentsCost = 0;
         double totalLength = 0;
         for (FlowCalculationService.CalculatedSegment seg : segments) {
@@ -84,26 +52,43 @@ public class CostService {
         }
         result.newNetworkLength = totalLength;
 
-        log.info("Стоимость участков: {} руб., длина: {} м", segmentsCost, totalLength);
-
         // 2. Врезки в существующие камеры
-        // Считаем: для каждой ОКС — одна врезка (если маршрут заканчивается в камере)
-        // Пока упрощённо: 1 врезка на каждый маршрут
-        int tieInCount = connectedOksIds.size();
+        // Считаем только те маршруты, что заканчиваются в камере.
+        // Для маршрутов, заканчивающихся в точке сети — определит TieInService (позже).
+        int tieInCount = 0;
+        for (FlowCalculationService.CalculatedSegment seg : segments) {
+            if (seg.routeEndIsChamber) {
+                // Считаем одну врезку на маршрут, не на участок.
+                // Чтобы не дублировать — считаем уникальные (oksId + routeEndNodeId).
+                // Логика ниже: в цикле по segments мы это обработаем через Set.
+            }
+        }
+
+        // Правильный подсчёт уникальных врезок
+        java.util.Set<String> tieInKeys = new java.util.HashSet<>();
+        for (FlowCalculationService.CalculatedSegment seg : segments) {
+            if (seg.routeEndIsChamber) {
+                String key = seg.oksId + "|" + seg.routeEndNodeId;
+                tieInKeys.add(key);
+            }
+        }
+        tieInCount = tieInKeys.size();
+
         double tieInCost = tieInCount * TIE_IN_COST;
         result.existingChamberTieInCount = tieInCount;
         result.existingChamberTieInCost = tieInCost;
 
-        log.info("Врезок в существующие камеры: {}, стоимость: {} руб.",
-                tieInCount, tieInCost);
-
-        // 3. Новые камеры — пока 0 (все маршруты идут до существующих камер)
+        // 3. Новые камеры — пока 0 (логика в TieInService, позже)
         result.chamberConstructionCost = 0;
 
         // 4. Итоговая стоимость строительства
         result.constructionCost = segmentsCost + result.chamberConstructionCost + tieInCost;
 
-        log.info("Стоимость строительства: {} руб.", result.constructionCost);
+        log.info("Стоимость участков: {} руб., длина: {} м",
+                Math.round(segmentsCost), Math.round(totalLength));
+        log.info("Врезок в существующие камеры: {}, стоимость: {} руб.",
+                tieInCount, Math.round(tieInCost));
+        log.info("Стоимость строительства: {} руб.", Math.round(result.constructionCost));
 
         // 5. Штраф за неподключённые точки
         result.unconnectedOksIds = new ArrayList<>();
@@ -113,8 +98,7 @@ public class CostService {
                 result.unconnectedOksIds.add(oks.getId());
                 double flow = oks.getFlowTph() != null ? oks.getFlowTph() : 0;
                 penalty += UNCONNECTED_BASE_PENALTY + UNCONNECTED_FLOW_PENALTY * flow;
-                log.warn("Неподключённая ОКС {}: расход {} т/ч, штраф {} руб.",
-                        oks.getId(), flow, UNCONNECTED_BASE_PENALTY + UNCONNECTED_FLOW_PENALTY * flow);
+                log.warn("Неподключённая ОКС {}: расход {} т/ч", oks.getId(), flow);
             }
         }
         result.unconnectedPenalty = penalty;
@@ -130,7 +114,7 @@ public class CostService {
                 Math.round(result.constructionCost),
                 Math.round(result.unconnectedPenalty),
                 Math.round(result.calculatedCost),
-                String.format("%.4f", result.score));
+                String.format(java.util.Locale.US, "%.4f", result.score));
 
         return result;
     }
