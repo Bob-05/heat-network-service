@@ -134,7 +134,8 @@ public class VariantService {
         }
 
         CostService.CostResult cost = costService.calculate(
-                segments, connectedOksIds, oksPoints);
+                segments, connectedOksIds, oksPoints,
+                routes, chambers, existingNetworks);
 
         Variant variant = new Variant();
         variant.variantId = tempId;

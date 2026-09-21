@@ -13,13 +13,14 @@ import java.util.List;
 @RequiredArgsConstructor
 public class CostService {
 
-    private static final double TIE_IN_COST = 5_000_000.0;
     private static final double UNCONNECTED_BASE_PENALTY = 100_000_000.0;
     private static final double UNCONNECTED_FLOW_PENALTY = 500_000.0;
     private static final double SCORE_COST_WEIGHT = 0.7;
     private static final double SCORE_COST_DIVISOR = 25_000_000.0;
     private static final double SCORE_LENGTH_WEIGHT = 0.3;
     private static final double SCORE_LENGTH_DIVISOR = 100.0;
+
+    private final TieInService tieInService;
 
     public static class CostResult {
         public double constructionCost;
@@ -31,15 +32,22 @@ public class CostService {
         public double newNetworkLength;
         public double score;
         public List<String> unconnectedOksIds;
+        public List<TieInService.TieInResult> tieIns;
     }
 
+    /**
+     * Рассчитывает стоимость варианта с учётом TieInService.
+     */
     public CostResult calculate(
             List<FlowCalculationService.CalculatedSegment> segments,
             List<String> connectedOksIds,
-            List<GeoObject> allOks
+            List<GeoObject> allOks,
+            List<RoutingService.Route> routes,
+            List<GeoObject> chambers,
+            List<GeoObject> existingNetworks
     ) {
-        log.info("Начинаем расчёт стоимости: {} участков, {} подключённых ОКС",
-                segments.size(), connectedOksIds.size());
+        log.info("Начинаем расчёт стоимости: {} участков, {} маршрутов",
+                segments.size(), routes.size());
 
         CostResult result = new CostResult();
 
@@ -52,42 +60,38 @@ public class CostService {
         }
         result.newNetworkLength = totalLength;
 
-        // 2. Врезки в существующие камеры
-        // Считаем только те маршруты, что заканчиваются в камере.
-        // Для маршрутов, заканчивающихся в точке сети — определит TieInService (позже).
+        // 2. Определяем тип присоединения через TieInService
+        List<TieInService.TieInResult> tieIns = tieInService.determineTieIns(
+                routes, chambers, existingNetworks, segments);
+        result.tieIns = tieIns;
+
+        // 3. Считаем врезки и новые камеры
         int tieInCount = 0;
-        for (FlowCalculationService.CalculatedSegment seg : segments) {
-            if (seg.routeEndIsChamber) {
-                // Считаем одну врезку на маршрут, не на участок.
-                // Чтобы не дублировать — считаем уникальные (oksId + routeEndNodeId).
-                // Логика ниже: в цикле по segments мы это обработаем через Set.
+        double tieInCost = 0;
+        double chamberCost = 0;
+
+        for (TieInService.TieInResult tieIn : tieIns) {
+            if (tieIn.useExistingChamber) {
+                tieInCount++;
+                tieInCost += tieIn.tieInCost;
+            } else {
+                chamberCost += tieIn.newChamberCost;
             }
         }
 
-        // Правильный подсчёт уникальных врезок
-        java.util.Set<String> tieInKeys = new java.util.HashSet<>();
-        for (FlowCalculationService.CalculatedSegment seg : segments) {
-            if (seg.routeEndIsChamber) {
-                String key = seg.oksId + "|" + seg.routeEndNodeId;
-                tieInKeys.add(key);
-            }
-        }
-        tieInCount = tieInKeys.size();
-
-        double tieInCost = tieInCount * TIE_IN_COST;
         result.existingChamberTieInCount = tieInCount;
         result.existingChamberTieInCost = tieInCost;
-
-        // 3. Новые камеры — пока 0 (логика в TieInService, позже)
-        result.chamberConstructionCost = 0;
+        result.chamberConstructionCost = chamberCost;
 
         // 4. Итоговая стоимость строительства
-        result.constructionCost = segmentsCost + result.chamberConstructionCost + tieInCost;
+        result.constructionCost = segmentsCost + chamberCost + tieInCost;
 
         log.info("Стоимость участков: {} руб., длина: {} м",
                 Math.round(segmentsCost), Math.round(totalLength));
         log.info("Врезок в существующие камеры: {}, стоимость: {} руб.",
                 tieInCount, Math.round(tieInCost));
+        log.info("Новых камер: {}, стоимость: {} руб.",
+                tieIns.size() - tieInCount, Math.round(chamberCost));
         log.info("Стоимость строительства: {} руб.", Math.round(result.constructionCost));
 
         // 5. Штраф за неподключённые точки
@@ -110,8 +114,10 @@ public class CostService {
         result.score = SCORE_COST_WEIGHT * (result.calculatedCost / SCORE_COST_DIVISOR)
                 + SCORE_LENGTH_WEIGHT * (result.newNetworkLength / SCORE_LENGTH_DIVISOR);
 
-        log.info("Итог: construction_cost={}, penalty={}, calculated_cost={}, score={}",
+        log.info("Итог: construction_cost={}, chamber_cost={}, tie_in_cost={}, penalty={}, calculated_cost={}, score={}",
                 Math.round(result.constructionCost),
+                Math.round(result.chamberConstructionCost),
+                Math.round(result.existingChamberTieInCost),
                 Math.round(result.unconnectedPenalty),
                 Math.round(result.calculatedCost),
                 String.format(java.util.Locale.US, "%.4f", result.score));

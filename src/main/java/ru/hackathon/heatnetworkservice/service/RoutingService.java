@@ -2,6 +2,7 @@ package ru.hackathon.heatnetworkservice.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
 import org.springframework.stereotype.Service;
 import ru.hackathon.heatnetworkservice.geometry.GraphBuilder;
@@ -28,16 +29,19 @@ public class RoutingService {
         public Double oksFlowTph;
         public String endNodeId;
         public boolean endIsChamber;
+        public Coordinate endCoordinateUtm;    // НОВОЕ
         public List<GraphBuilder.Edge> edges;
         public double totalLength;
         public double totalCost;
 
-        public Route(String oksId, Double oksFlowTph, String endNodeId, boolean endIsChamber,
+        public Route(String oksId, Double oksFlowTph, String endNodeId,
+                     boolean endIsChamber, Coordinate endCoordinateUtm,
                      List<GraphBuilder.Edge> edges) {
             this.oksId = oksId;
             this.oksFlowTph = oksFlowTph;
             this.endNodeId = endNodeId;
             this.endIsChamber = endIsChamber;
+            this.endCoordinateUtm = endCoordinateUtm;
             this.edges = edges;
             this.totalLength = edges.stream().mapToDouble(e -> e.length).sum();
             this.totalCost = edges.stream().mapToDouble(e -> e.cost).sum();
@@ -77,13 +81,11 @@ public class RoutingService {
 
         Map<String, List<GraphBuilder.Edge>> adjacency = buildAdjacency(edges);
 
-        // Множества ID целевых узлов
         Set<String> chamberIds = new HashSet<>();
         for (GeoObject chamber : chambers) {
             chamberIds.add(chamber.getId());
         }
 
-        // Точки сетей: ID начинается с "net_"
         Set<String> networkPointIds = new HashSet<>();
         for (String nodeId : adjacency.keySet()) {
             if (nodeId.startsWith("net_")) {
@@ -156,7 +158,6 @@ public class RoutingService {
             if (visited.contains(current)) continue;
             visited.add(current);
 
-            // Цель: камера или точка сети
             if (!current.equals(startId)
                     && (chamberIds.contains(current) || networkPointIds.contains(current))) {
                 endNode = current;
@@ -183,6 +184,7 @@ public class RoutingService {
             return null;
         }
 
+        // Восстанавливаем путь
         List<GraphBuilder.Edge> path = new ArrayList<>();
         String current = endNode;
         while (!current.equals(startId)) {
@@ -192,7 +194,19 @@ public class RoutingService {
             current = edge.fromId.equals(current) ? edge.toId : edge.fromId;
         }
 
+        // Координата конечной точки — из последнего ребра
+        Coordinate endCoordinateUtm = null;
+        if (!path.isEmpty()) {
+            GraphBuilder.Edge lastEdge = path.get(path.size() - 1);
+            if (lastEdge.toId.equals(endNode)) {
+                endCoordinateUtm = lastEdge.toCoordinateUtm;
+            } else {
+                endCoordinateUtm = lastEdge.fromCoordinateUtm;
+            }
+        }
+
         boolean endIsChamber = chamberIds.contains(endNode);
-        return new Route(startId, oks.getFlowTph(), endNode, endIsChamber, path);
+        return new Route(startId, oks.getFlowTph(), endNode, endIsChamber,
+                endCoordinateUtm, path);
     }
 }
