@@ -7,12 +7,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import ru.hackathon.heatnetworkservice.model.GeoObject;
 import ru.hackathon.heatnetworkservice.repository.GeoObjectRepository;
 import ru.hackathon.heatnetworkservice.service.FlowCalculationService;
 import ru.hackathon.heatnetworkservice.service.RoutingService;
+import ru.hackathon.heatnetworkservice.service.VariantService;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -23,19 +23,16 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1")
 @RequiredArgsConstructor
-@Tag(name = "Routing", description = "Тестирование построения маршрутов")
+@Tag(name = "Routing", description = "Тестирование построения маршрутов и вариантов")
 public class RoutingController {
 
     private final GeoObjectRepository geoObjectRepository;
-    private final RoutingService routingService;
-    private final FlowCalculationService flowCalculationService;
+    private final VariantService variantService;
 
     @PostMapping("/test-routing")
-    @Operation(summary = "Тест маршрутизации",
-            description = "Строит маршруты для всех ОКС до ближайших камер и подбирает ДУ")
-    public ResponseEntity<Map<String, Object>> testRouting(
-            @RequestParam(value = "diameter", defaultValue = "300") Integer diameter
-    ) {
+    @Operation(summary = "Тест формирования вариантов",
+            description = "Строит до 3 вариантов подключения ОКС и ранжирует их по score")
+    public ResponseEntity<Map<String, Object>> testRouting() {
         try {
             // Загружаем объекты из БД
             List<GeoObject> allObjects = geoObjectRepository.findAll();
@@ -60,54 +57,75 @@ public class RoutingController {
             log.info("ОКС: {}, Камеры: {}, Препятствия: {}",
                     oksPoints.size(), chambers.size(), obstacles.size());
 
-            // Строим маршруты (diameter — заглушка для проверки препятствий)
-            List<RoutingService.Route> routes = routingService.buildRoutes(
-                    oksPoints, chambers, obstacles, diameter);
-
-            // Рассчитываем ДУ для каждого маршрута
-            List<FlowCalculationService.CalculatedSegment> segments =
-                    flowCalculationService.calculateSegments(routes);
+            // Формируем варианты
+            long startTime = System.currentTimeMillis();
+            List<VariantService.Variant> variants = variantService.buildVariants(
+                    oksPoints, chambers, obstacles);
+            long elapsed = System.currentTimeMillis() - startTime;
 
             // Формируем ответ
             Map<String, Object> result = new HashMap<>();
             result.put("status", "OK");
-            result.put("input_diameter_stub", diameter);
             result.put("oks_count", oksPoints.size());
             result.put("chambers_count", chambers.size());
             result.put("obstacles_count", obstacles.size());
-            result.put("routes_built", routes.size());
-            result.put("routes_not_built", oksPoints.size() - routes.size());
-            result.put("segments_count", segments.size());
+            result.put("variants_count", variants.size());
+            result.put("elapsed_ms", elapsed);
 
-            // Детали по маршрутам
-            List<Map<String, Object>> routeDetails = new ArrayList<>();
-            for (RoutingService.Route route : routes) {
-                Map<String, Object> detail = new HashMap<>();
-                detail.put("oks_id", route.oksId);
-                detail.put("oks_flow_tph", route.oksFlowTph);
-                detail.put("chamber_id", route.chamberId);
-                detail.put("edges_count", route.edges.size());
-                detail.put("total_length_m", Math.round(route.totalLength));
+            // Детали по вариантам
+            List<Map<String, Object>> variantDetails = new ArrayList<>();
+            for (VariantService.Variant v : variants) {
+                Map<String, Object> vd = new HashMap<>();
+                vd.put("variant_id", v.variantId);
+                vd.put("rank", v.rank);
+                vd.put("weight_type", v.weightType.name());
 
-                // Находим ДУ и стоимость по сегментам этого ОКС
-                int diameter2 = 0;
-                double totalCost = 0;
-                for (FlowCalculationService.CalculatedSegment seg : segments) {
-                    if (seg.oksId.equals(route.oksId)) {
-                        diameter2 = seg.diameter;
-                        totalCost += seg.cost;
+                // Маршруты
+                List<Map<String, Object>> routeDetails = new ArrayList<>();
+                for (RoutingService.Route route : v.routes) {
+                    Map<String, Object> rd = new HashMap<>();
+                    rd.put("oks_id", route.oksId);
+                    rd.put("oks_flow_tph", route.oksFlowTph);
+                    rd.put("chamber_id", route.chamberId);
+                    rd.put("edges_count", route.edges.size());
+                    rd.put("total_length_m", Math.round(route.totalLength));
+
+                    // ДУ этого маршрута
+                    int diameter = 0;
+                    double routeCost = 0;
+                    for (FlowCalculationService.CalculatedSegment seg : v.segments) {
+                        if (seg.oksId.equals(route.oksId)) {
+                            diameter = seg.diameter;
+                            routeCost += seg.cost;
+                        }
                     }
+                    rd.put("diameter", diameter);
+                    rd.put("total_cost_rub", Math.round(routeCost));
+                    routeDetails.add(rd);
                 }
-                detail.put("diameter", diameter2);
-                detail.put("total_cost_rub", Math.round(totalCost));
-                routeDetails.add(detail);
+                vd.put("routes", routeDetails);
+
+                // Стоимость
+                Map<String, Object> costMap = new HashMap<>();
+                costMap.put("construction_cost", Math.round(v.cost.constructionCost));
+                costMap.put("chamber_construction_cost", Math.round(v.cost.chamberConstructionCost));
+                costMap.put("existing_chamber_tie_in_count", v.cost.existingChamberTieInCount);
+                costMap.put("existing_chamber_tie_in_cost", Math.round(v.cost.existingChamberTieInCost));
+                costMap.put("unconnected_penalty", Math.round(v.cost.unconnectedPenalty));
+                costMap.put("calculated_cost", Math.round(v.cost.calculatedCost));
+                costMap.put("new_network_length", Math.round(v.cost.newNetworkLength));
+                costMap.put("score", Math.round(v.cost.score * 10000.0) / 10000.0);
+                costMap.put("unconnected_oks_ids", v.cost.unconnectedOksIds);
+                vd.put("cost", costMap);
+
+                variantDetails.add(vd);
             }
-            result.put("routes", routeDetails);
+            result.put("variants", variantDetails);
 
             return ResponseEntity.ok(result);
 
         } catch (Exception e) {
-            log.error("Ошибка маршрутизации: {}", e.getMessage(), e);
+            log.error("Ошибка формирования вариантов: {}", e.getMessage(), e);
             Map<String, Object> error = new HashMap<>();
             error.put("status", "ERROR");
             error.put("message", e.getMessage());
