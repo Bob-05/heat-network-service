@@ -25,3 +25,12 @@ logging:
     ru.hackathon: INFO
     ru.hackathon.heatnetworkservice.geometry.ObstacleChecker: WARN
     ru.hackathon.heatnetworkservice.geometry.GraphBuilder: INFO
+
+routing:
+  max-edge-length-min: 2000.0
+  network-split-step: 5.0
+  network-radius-start: 100.0
+  network-radius-multiplier: 2.0
+  max-radius-iterations: 10
+  no-progress-iterations-to-stop: 2
+  target-obstacle-radius: 500.0

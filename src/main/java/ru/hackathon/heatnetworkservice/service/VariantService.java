@@ -4,15 +4,16 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import ru.hackathon.heatnetworkservice.geometry.GraphBuilder;
+import ru.hackathon.heatnetworkservice.geometry.RoutingConfig;
 import ru.hackathon.heatnetworkservice.model.GeoObject;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -23,6 +24,7 @@ public class VariantService {
     private final FlowCalculationService flowCalculationService;
     private final CostService costService;
     private final GraphBuilder graphBuilder;
+    private final RoutingConfig routingConfig;
 
     private static final int MAX_DIAMETER = 1400;
     private static final int MAX_ITERATIONS = 18;
@@ -36,15 +38,12 @@ public class VariantService {
         public CostService.CostResult cost;
         public List<GeoObject> allOks;
         public List<GeoObject> chambers;
+        /** Итоговый радиус, при котором получен вариант (null = без ограничения). */
+        public Double finalRadius;
     }
 
     /**
      * Формирует до 3 содержательно отличающихся вариантов.
-     *
-     * @param oksPoints        точки ОКС
-     * @param chambers         существующие камеры
-     * @param obstacles        пространственные ограничения
-     * @param existingNetworks существующие тепловые сети (для присоединения)
      */
     public List<Variant> buildVariants(
             List<GeoObject> oksPoints,
@@ -61,9 +60,8 @@ public class VariantService {
 
         while (iteration < MAX_ITERATIONS) {
             iteration++;
-            log.info("--- Итерация {}: ДУ = {} ---", iteration, currentDiameter);
+            log.info("--- Итерация ДУ {}: ДУ = {} ---", iteration, currentDiameter);
 
-            // Три прогона Дейкстры с разными весами
             Variant vLength = runVariant(oksPoints, chambers, obstacles, existingNetworks,
                     RoutingService.WeightType.LENGTH, "vL", currentDiameter);
             Variant vCost = runVariant(oksPoints, chambers, obstacles, existingNetworks,
@@ -71,7 +69,6 @@ public class VariantService {
             Variant vScore = runVariant(oksPoints, chambers, obstacles, existingNetworks,
                     RoutingService.WeightType.SCORE, "vS", currentDiameter);
 
-            // Максимальный ДУ среди всех вариантов
             int maxDiameter = 0;
             for (Variant v : List.of(vLength, vCost, vScore)) {
                 for (FlowCalculationService.CalculatedSegment seg : v.segments) {
@@ -79,12 +76,11 @@ public class VariantService {
                 }
             }
 
-            log.info("Итерация {}: текущий ДУ = {}, max ДУ среди вариантов = {}",
+            log.info("Итерация ДУ {}: текущий ДУ = {}, max ДУ среди вариантов = {}",
                     iteration, currentDiameter, maxDiameter);
 
-            // Стабилизация
             if (maxDiameter >= currentDiameter) {
-                log.info("Стабилизация достигнута на итерации {}: ДУ = {}",
+                log.info("Стабилизация ДУ достигнута на итерации {}: ДУ = {}",
                         iteration, currentDiameter);
                 variants.add(vLength);
                 variants.add(vCost);
@@ -95,26 +91,28 @@ public class VariantService {
             currentDiameter = maxDiameter;
         }
 
-        // Отсев дубликатов
         List<Variant> uniqueVariants = filterUniqueVariants(variants);
 
-        // Ранжирование по score
         uniqueVariants.sort(Comparator.comparingDouble(v -> v.cost.score));
         for (int i = 0; i < uniqueVariants.size(); i++) {
             Variant v = uniqueVariants.get(i);
             v.variantId = "v" + (i + 1);
             v.rank = i + 1;
-            log.info("Вариант {}: rank={}, weight={}, score={}, cost={}, length={}",
+            log.info("Вариант {}: rank={}, weight={}, score={}, cost={}, length={}, radius={}",
                     v.variantId, v.rank, v.weightType,
                     String.format(java.util.Locale.US, "%.4f", v.cost.score),
                     Math.round(v.cost.calculatedCost),
-                    Math.round(v.cost.newNetworkLength));
+                    Math.round(v.cost.newNetworkLength),
+                    v.finalRadius == null ? "без ограничения" : Math.round(v.finalRadius) + " м");
         }
 
         log.info("=== Итого вариантов: {} ===", uniqueVariants.size());
         return uniqueVariants;
     }
 
+    /**
+     * Запускает один вариант: итеративное расширение радиуса → маршруты → ДУ → стоимость.
+     */
     private Variant runVariant(
             List<GeoObject> oksPoints,
             List<GeoObject> chambers,
@@ -124,14 +122,77 @@ public class VariantService {
             String tempId,
             int diameter
     ) {
-        List<RoutingService.Route> routes = routingService.buildRoutes(
-                oksPoints, chambers, obstacles, existingNetworks, diameter, weightType);
+        double radius = routingConfig.getNetworkRadiusStart();
+        boolean unlimited = false;
+        int noProgressCount = 0;
+        int connectedPrev = -1;
 
-        // ОБЪЕДИНЁННЫЕ участки (для стоимости)
+        List<RoutingService.Route> routes = null;
+        Double finalRadius = null;
+
+        for (int attempt = 0; attempt < routingConfig.getMaxRadiusIterations(); attempt++) {
+            Double currentRadius = unlimited ? null : radius;
+
+            log.info("Итерация радиуса {} для веса {}: радиус = {}",
+                    attempt + 1, weightType,
+                    unlimited ? "без ограничения" : Math.round(radius) + " м");
+
+            routes = routingService.buildRoutes(
+                    oksPoints, chambers, obstacles, existingNetworks,
+                    diameter, currentRadius, weightType);
+
+            int connectedNow = countConnected(routes);
+            log.info("Подключено ОКС: {} из {} (радиус {})",
+                    connectedNow, oksPoints.size(),
+                    unlimited ? "∞" : Math.round(radius));
+
+            finalRadius = currentRadius;
+
+            // Все подключены — стоп
+            if (connectedNow == oksPoints.size()) {
+                log.info("Все ОКС подключены на итерации радиуса {}", attempt + 1);
+                break;
+            }
+
+            // Прогресс
+            if (connectedNow <= connectedPrev) {
+                noProgressCount++;
+                log.info("Прогресса нет ({} подряд)", noProgressCount);
+                if (noProgressCount >= routingConfig.getNoProgressIterationsToStop()) {
+                    log.warn("Останов: нет прогресса {} итераций подряд", noProgressCount);
+                    break;
+                }
+            } else {
+                noProgressCount = 0;
+            }
+            connectedPrev = connectedNow;
+
+            // Если 0 подключено — переход к без ограничения
+            if (connectedNow == 0 && !unlimited) {
+                log.warn("Ни один ОКС не подключён. Переход к поиску без ограничения радиуса.");
+                unlimited = true;
+                continue;
+            }
+
+            // Если уже без ограничения и всё равно нет прогресса — стоп
+            if (unlimited) {
+                log.warn("Без ограничения радиуса прогресса нет. Останов.");
+                break;
+            }
+
+            // Расширяем радиус
+            radius *= routingConfig.getNetworkRadiusMultiplier();
+        }
+
+        if (routes == null) {
+            routes = new ArrayList<>();
+        }
+
+        // Объединённые участки
         List<FlowCalculationService.CalculatedSegment> segments =
                 flowCalculationService.calculateMergedSegments(routes);
 
-        // ДУ для каждого маршрута отдельно (для определения ДУ камер)
+        // ДУ для каждого маршрута
         Map<String, Integer> oksDiameters = new HashMap<>();
         for (RoutingService.Route route : routes) {
             if (route.oksFlowTph == null) continue;
@@ -143,6 +204,17 @@ public class VariantService {
         List<String> connectedOksIds = new ArrayList<>();
         for (RoutingService.Route route : routes) {
             connectedOksIds.add(route.oksId);
+        }
+
+        // Логируем неподключённые ОКС
+        for (GeoObject oks : oksPoints) {
+            if (!connectedOksIds.contains(oks.getId())) {
+                log.warn("ОКС {} не подключена. Причина: не найден допустимый маршрут " +
+                                "при радиусе {} (расход {} т/ч)",
+                        oks.getId(),
+                        finalRadius == null ? "∞" : Math.round(finalRadius) + " м",
+                        oks.getFlowTph());
+            }
         }
 
         CostService.CostResult cost = costService.calculate(
@@ -157,8 +229,14 @@ public class VariantService {
         variant.cost = cost;
         variant.allOks = oksPoints;
         variant.chambers = chambers;
+        variant.finalRadius = finalRadius;
 
         return variant;
+    }
+
+    private int countConnected(List<RoutingService.Route> routes) {
+        if (routes == null) return 0;
+        return routes.size();
     }
 
     private List<Variant> filterUniqueVariants(List<Variant> variants) {
@@ -177,10 +255,6 @@ public class VariantService {
         return unique;
     }
 
-    /**
-     * Подпись варианта: набор пар (oksId → endNodeId|isChamber).
-     * Два варианта одинаковы, если все ОКС ведут к одинаковым узлам.
-     */
     private String buildSignature(Variant v) {
         List<String> pairs = new ArrayList<>();
         for (RoutingService.Route route : v.routes) {

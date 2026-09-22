@@ -54,6 +54,7 @@ public class RoutingService {
             List<GeoObject> obstacles,
             List<GeoObject> existingNetworks,
             int diameter,
+            Double networkRadius,
             WeightType weightType
     ) {
         List<GeoObject> allNodes = new ArrayList<>();
@@ -61,7 +62,7 @@ public class RoutingService {
         allNodes.addAll(chambers);
 
         List<GraphBuilder.Edge> edges = graphBuilder.buildGraph(
-                allNodes, oksPoints, obstacles, existingNetworks, diameter);
+                allNodes, oksPoints, obstacles, existingNetworks, diameter, networkRadius);
 
         return findRoutes(edges, oksPoints, chambers, weightType);
     }
