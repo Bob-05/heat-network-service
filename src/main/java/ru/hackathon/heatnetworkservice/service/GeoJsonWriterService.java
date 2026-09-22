@@ -131,6 +131,7 @@ public class GeoJsonWriterService {
     private void writeTechnicalNodes(JsonGenerator gen, String variantId,
                                      VariantService.Variant variant) throws IOException {
         int index = 0;
+        java.util.Set<String> seen = new java.util.HashSet<>();
 
         for (RoutingService.Route route : variant.routes) {
             List<GraphBuilder.Edge> edges = route.edges;
@@ -142,6 +143,12 @@ public class GeoJsonWriterService {
                 if (!methodChanged) continue;
 
                 Coordinate boundaryUtm = current.toCoordinateUtm;
+
+                // Ключ по координате (округлённой до 1 м) — чтобы не дублировать
+                String key = Math.round(boundaryUtm.x) + "_" + Math.round(boundaryUtm.y);
+                if (seen.contains(key)) continue;
+                seen.add(key);
+
                 if (isOksOrChamber(boundaryUtm, variant)) continue;
 
                 index++;

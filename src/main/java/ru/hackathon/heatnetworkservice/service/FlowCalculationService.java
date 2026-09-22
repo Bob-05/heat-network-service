@@ -7,7 +7,11 @@ import org.springframework.stereotype.Service;
 import ru.hackathon.heatnetworkservice.geometry.GraphBuilder;
 
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -23,7 +27,7 @@ public class FlowCalculationService {
      * Рассчитанный участок.
      */
     public static class CalculatedSegment {
-        public String oksId;                // ID ОКС, к которой относится участок
+        public String oksId;                // ID ОКС (или список через запятую для общих участков)
         public String routeEndNodeId;       // ID конечного узла маршрута (камера или точка сети)
         public boolean routeEndIsChamber;   // true — камера, false — точка сети
         public String segmentStartNodeId;   // начало конкретного участка
@@ -54,6 +58,10 @@ public class FlowCalculationService {
         return COST_PER_M[COST_PER_M.length - 1];
     }
 
+    /**
+     * Старый метод — рассчитывает ДУ для каждого маршрута отдельно.
+     * Оставлен для совместимости.
+     */
     public List<CalculatedSegment> calculateSegments(List<RoutingService.Route> routes) {
         log.info("Начинаем расчёт расходов и ДУ для {} маршрутов", routes.size());
 
@@ -97,5 +105,97 @@ public class FlowCalculationService {
 
         log.info("Рассчитано участков: {}", result.size());
         return result;
+    }
+
+    /**
+     * НОВЫЙ метод — рассчитывает ДУ для ОБЪЕДИНЁННЫХ участков.
+     *
+     * Логика (ТЗ раздел 2.3):
+     * - Расход участка = сумма расходов всех ОКС, которые через него проходят.
+     * - ДУ выбирается по суммарному расходу и предельной длине.
+     * - Предельная длина проверяется по каждому непрерывному пути (разъяснение 2).
+     */
+    public List<CalculatedSegment> calculateMergedSegments(List<RoutingService.Route> routes) {
+        log.info("Расчёт объединённых участков для {} маршрутов", routes.size());
+
+        // 1. Группируем рёбра по паре (fromId, toId)
+        Map<String, EdgeInfo> edgeGroups = new LinkedHashMap<>();
+
+        for (RoutingService.Route route : routes) {
+            if (route.oksFlowTph == null) continue;
+
+            for (GraphBuilder.Edge edge : route.edges) {
+                String key = makeEdgeKey(edge.fromId, edge.toId);
+
+                EdgeInfo info = edgeGroups.computeIfAbsent(key, k -> new EdgeInfo());
+                info.fromId = edge.fromId;
+                info.toId = edge.toId;
+                info.geometry = edge.geometry;
+                info.length = edge.length;
+                info.layingMethod = edge.layingMethod;
+                info.kspec = edge.kspec;
+
+                // Добавляем ОКС, если ещё не добавлена
+                if (!info.oksIds.contains(route.oksId)) {
+                    info.oksIds.add(route.oksId);
+                    info.totalFlowTph += route.oksFlowTph;
+                }
+            }
+        }
+
+        log.info("Уникальных рёбер: {}", edgeGroups.size());
+
+        // 2. Для каждого уникального ребра подбираем ДУ и считаем стоимость
+        List<CalculatedSegment> result = new ArrayList<>();
+
+        for (EdgeInfo info : edgeGroups.values()) {
+            int diameter = selectDiameter(info.totalFlowTph, info.length);
+
+            CalculatedSegment seg = new CalculatedSegment();
+            seg.oksId = String.join(",", info.oksIds);
+            seg.segmentStartNodeId = info.fromId;
+            seg.segmentEndNodeId = info.toId;
+            seg.geometry = info.geometry;
+            seg.length = info.length;
+            seg.flowTph = info.totalFlowTph;
+            seg.diameter = diameter;
+            seg.layingMethod = info.layingMethod;
+            seg.kspec = info.kspec;
+
+            double costPerMeter = getCostPerMeter(diameter);
+            seg.cost = info.length * costPerMeter * info.kspec;
+
+            result.add(seg);
+
+            log.info("Ребро {}→{}: расход {} т/ч ({} ОКС), ДУ={}, длина {} м",
+                    info.fromId, info.toId, Math.round(info.totalFlowTph * 100.0) / 100.0,
+                    info.oksIds.size(), diameter, Math.round(info.length));
+        }
+
+        log.info("Объединённых участков: {}", result.size());
+        return result;
+    }
+
+    /**
+     * Создаёт ключ для ребра (не зависит от направления).
+     */
+    private String makeEdgeKey(String fromId, String toId) {
+        return fromId.compareTo(toId) <= 0
+                ? fromId + "→" + toId
+                : toId + "→" + fromId;
+    }
+
+    /**
+     * Внутренний класс для группировки рёбер.
+     */
+    private static class EdgeInfo {
+        String fromId;
+        String toId;
+        LineString geometry;
+        double length;
+        String layingMethod;
+        double kspec;
+        Set<String> oksIds = new HashSet<>();
+        double totalFlowTph = 0;
     }
 }

@@ -10,7 +10,9 @@ import ru.hackathon.heatnetworkservice.geometry.CoordinateTransformer;
 import ru.hackathon.heatnetworkservice.model.GeoObject;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Сервис определения типа присоединения и подсчёта врезок.
@@ -20,6 +22,9 @@ import java.util.List;
  * - Если маршрут заканчивается в точке сети:
  *   - Если рядом (≤ 10 м) есть камера и после подключения примыканий ≤ 4 → используем камеру (5 000 000).
  *   - Иначе → новая камера по Таблице 3.2.
+ *
+ * Объединение: несколько ОКС могут присоединиться в одну и ту же точку сети.
+ * В этом случае создаётся ОДНА камера (с максимальным ДУ).
  */
 @Slf4j
 @Service
@@ -38,6 +43,9 @@ public class TieInService {
     /** Стоимость одной врезки в существующую камеру. */
     private static final double TIE_IN_COST = 5_000_000.0;
 
+    /** Точность округления координаты при объединении камер (м). */
+    private static final double MERGE_PRECISION_M = 1.0;
+
     private final CoordinateTransformer coordinateTransformer;
     private final GeometryFactory geometryFactory = new GeometryFactory();
 
@@ -53,11 +61,15 @@ public class TieInService {
         public int existingChamberTieInCount;
     }
 
+    /**
+     * Определяет тип присоединения для каждого маршрута.
+     * Объединяет новые камеры по точке присоединения.
+     */
     public List<TieInResult> determineTieIns(
             List<RoutingService.Route> routes,
             List<GeoObject> chambers,
             List<GeoObject> existingNetworks,
-            List<FlowCalculationService.CalculatedSegment> segmentsByOks
+            Map<String, Integer> oksDiameters
     ) {
         log.info("Определение типа присоединения для {} маршрутов", routes.size());
 
@@ -75,14 +87,8 @@ public class TieInService {
             result.oksId = route.oksId;
             result.endNodeId = route.endNodeId;
 
-            // Определяем ДУ маршрута
-            int routeDiameter = 0;
-            for (FlowCalculationService.CalculatedSegment seg : segmentsByOks) {
-                if (seg.oksId.equals(route.oksId)) {
-                    routeDiameter = seg.diameter;
-                    break;
-                }
-            }
+            // ДУ маршрута — из переданной мапы (индивидуальный ДУ для камеры)
+            int routeDiameter = oksDiameters.getOrDefault(route.oksId, 0);
             result.newChamberDiameter = routeDiameter;
 
             if (route.endIsChamber) {
@@ -112,11 +118,8 @@ public class TieInService {
                 double minDistToChamber = Double.MAX_VALUE;
                 String nearestChamberId = null;
 
-                // ДИАГНОСТИКА: собираем расстояния до всех камер
-                StringBuilder distances = new StringBuilder();
                 for (ChamberInfo ci : chamberInfos) {
                     double dist = endCoord.distance(ci.coordinate);
-                    distances.append(ci.id).append("=").append(Math.round(dist)).append("м ");
 
                     if (dist < minDistToChamber) {
                         minDistToChamber = dist;
@@ -157,14 +160,68 @@ public class TieInService {
             results.add(result);
         }
 
-        long existingCount = results.stream().filter(r -> r.useExistingChamber).count();
-        long newCount = results.stream().filter(r -> !r.useExistingChamber).count();
-        log.info("Итого: {} врезок в существующие камеры, {} новых камер",
+        // ===== ОБЪЕДИНЕНИЕ новых камер по точке присоединения =====
+        List<TieInResult> mergedResults = mergeNewChambers(results);
+
+        long existingCount = mergedResults.stream().filter(r -> r.useExistingChamber).count();
+        long newCount = mergedResults.stream().filter(r -> !r.useExistingChamber).count();
+        log.info("После объединения: {} врезок в существующие камеры, {} новых камер",
                 existingCount, newCount);
 
-        return results;
+        return mergedResults;
     }
 
+    /**
+     * Объединяет новые камеры, находящиеся в одной точке.
+     * Для каждой уникальной точки — одна камера с максимальным ДУ.
+     */
+    private List<TieInResult> mergeNewChambers(List<TieInResult> results) {
+        // Существующие камеры — оставляем как есть
+        List<TieInResult> merged = new ArrayList<>();
+        Map<String, TieInResult> uniqueNewChambers = new LinkedHashMap<>();
+
+        for (TieInResult result : results) {
+            if (result.useExistingChamber) {
+                merged.add(result);
+                continue;
+            }
+
+            if (result.newChamberCoordinate == null) {
+                // Нет координаты — не можем объединить, оставляем как есть
+                merged.add(result);
+                continue;
+            }
+
+            // Ключ по координате с точностью MERGE_PRECISION_M
+            String key = Math.round(result.newChamberCoordinate.x / MERGE_PRECISION_M)
+                    + "_" + Math.round(result.newChamberCoordinate.y / MERGE_PRECISION_M);
+
+            TieInResult existing = uniqueNewChambers.get(key);
+            if (existing == null) {
+                // Первая камера в этой точке — добавляем
+                uniqueNewChambers.put(key, result);
+                merged.add(result);
+            } else {
+                // Уже есть камера в этой точке — объединяем
+                if (result.newChamberDiameter > existing.newChamberDiameter) {
+                    existing.newChamberDiameter = result.newChamberDiameter;
+                    existing.newChamberCost = result.newChamberCost;
+                }
+                existing.oksId = existing.oksId + "," + result.oksId;
+
+                log.info("Объединение камеры в точке ({}, {}): ОКС {} присоединена к существующей",
+                        Math.round(result.newChamberCoordinate.x),
+                        Math.round(result.newChamberCoordinate.y),
+                        result.oksId);
+            }
+        }
+
+        return merged;
+    }
+
+    /**
+     * Считает существующие примыкания к точке (координата камеры в UTM).
+     */
     private int countExistingTieIns(Coordinate chamberCoord, List<GeoObject> networks) {
         int count = 0;
         for (GeoObject net : networks) {

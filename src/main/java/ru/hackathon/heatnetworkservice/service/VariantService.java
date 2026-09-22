@@ -11,6 +11,8 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.HashMap;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -125,8 +127,18 @@ public class VariantService {
         List<RoutingService.Route> routes = routingService.buildRoutes(
                 oksPoints, chambers, obstacles, existingNetworks, diameter, weightType);
 
+        // ОБЪЕДИНЁННЫЕ участки (для стоимости)
         List<FlowCalculationService.CalculatedSegment> segments =
-                flowCalculationService.calculateSegments(routes);
+                flowCalculationService.calculateMergedSegments(routes);
+
+        // ДУ для каждого маршрута отдельно (для определения ДУ камер)
+        Map<String, Integer> oksDiameters = new HashMap<>();
+        for (RoutingService.Route route : routes) {
+            if (route.oksFlowTph == null) continue;
+            int routeDiameter = flowCalculationService.selectDiameter(
+                    route.oksFlowTph, route.totalLength);
+            oksDiameters.put(route.oksId, routeDiameter);
+        }
 
         List<String> connectedOksIds = new ArrayList<>();
         for (RoutingService.Route route : routes) {
@@ -135,7 +147,7 @@ public class VariantService {
 
         CostService.CostResult cost = costService.calculate(
                 segments, connectedOksIds, oksPoints,
-                routes, chambers, existingNetworks);
+                routes, chambers, existingNetworks, oksDiameters);
 
         Variant variant = new Variant();
         variant.variantId = tempId;

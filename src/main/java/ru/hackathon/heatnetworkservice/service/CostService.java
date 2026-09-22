@@ -44,7 +44,8 @@ public class CostService {
             List<GeoObject> allOks,
             List<RoutingService.Route> routes,
             List<GeoObject> chambers,
-            List<GeoObject> existingNetworks
+            List<GeoObject> existingNetworks,
+            java.util.Map<String, Integer> oksDiameters
     ) {
         log.info("Начинаем расчёт стоимости: {} участков, {} маршрутов",
                 segments.size(), routes.size());
@@ -62,7 +63,7 @@ public class CostService {
 
         // 2. Определяем тип присоединения через TieInService
         List<TieInService.TieInResult> tieIns = tieInService.determineTieIns(
-                routes, chambers, existingNetworks, segments);
+                routes, chambers, existingNetworks, oksDiameters);
         result.tieIns = tieIns;
 
         // 3. Считаем врезки и новые камеры
