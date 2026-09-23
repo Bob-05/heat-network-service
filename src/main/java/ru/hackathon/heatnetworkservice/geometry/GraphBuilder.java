@@ -7,6 +7,7 @@ import org.locationtech.jts.geom.Envelope;
 import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.LineString;
+import org.locationtech.jts.index.strtree.STRtree;
 import org.springframework.stereotype.Component;
 import ru.hackathon.heatnetworkservice.model.GeoObject;
 
@@ -85,23 +86,20 @@ public class GraphBuilder {
     }
 
     /**
-     * Строит граф.
-     *
-     * @param networkRadius если null — берём ВСЕ точки существующих сетей.
-     *                      Если != null — фильтруем по расстоянию до ближайшего ОКС.
+     * Строит граф БЕЗ ограничения радиуса.
+     * Все точки существующих сетей попадают в граф.
+     * Рёбра строятся только между близкими узлами (через STRtree).
      */
     public List<Edge> buildGraph(
             List<GeoObject> nodes,
             List<GeoObject> oksPoints,
             List<GeoObject> obstacles,
             List<GeoObject> existingNetworks,
-            int diameter,
-            Double networkRadius
+            int diameter
     ) {
-        log.info("Строим граф: {} узлов, {} ОКС, {} препятствий, {} сетей, ДУ={}, радиус={}",
+        log.info("Строим граф: {} узлов, {} ОКС, {} препятствий, {} сетей, ДУ={}",
                 nodes.size(), oksPoints.size(), obstacles.size(),
-                existingNetworks.size(), diameter,
-                networkRadius == null ? "без ограничения" : networkRadius + " м");
+                existingNetworks.size(), diameter);
 
         long startTime = System.currentTimeMillis();
 
@@ -116,14 +114,7 @@ public class GraphBuilder {
             targetNodes.add(new Node(obj.getId(), wgs84, utm, true, false));
         }
 
-        // 2. Точки существующих сетей
-        List<Coordinate> oksCoordsUtm = new ArrayList<>();
-        for (GeoObject oks : oksPoints) {
-            if (oks.getGeometry() == null) continue;
-            Geometry utmGeom = coordinateTransformer.toUtm37n(oks.getGeometry());
-            if (utmGeom != null) oksCoordsUtm.add(utmGeom.getCoordinate());
-        }
-
+        // 2. Все точки существующих сетей — без фильтрации по радиусу
         List<Node> networkNodes = new ArrayList<>();
         int networkPointCounter = 0;
 
@@ -133,18 +124,14 @@ public class GraphBuilder {
             if (utmGeom == null) continue;
 
             Coordinate[] coords = utmGeom.getCoordinates();
-
-            // Собираем все точки: вершины + промежуточные с шагом
             List<Coordinate> pointsForNetwork = new ArrayList<>();
 
             for (int i = 0; i < coords.length - 1; i++) {
                 Coordinate a = coords[i];
                 Coordinate b = coords[i + 1];
 
-                // ВСЕГДА добавляем вершину a
                 pointsForNetwork.add(a);
 
-                // Промежуточные точки с шагом
                 double segLen = a.distance(b);
                 int steps = (int) Math.ceil(segLen / config.getNetworkSplitStep());
                 for (int s = 1; s < steps; s++) {
@@ -154,22 +141,9 @@ public class GraphBuilder {
                     pointsForNetwork.add(new Coordinate(x, y));
                 }
             }
-            // Добавляем последнюю вершину
             pointsForNetwork.add(coords[coords.length - 1]);
 
             for (Coordinate point : pointsForNetwork) {
-                // Фильтрация по радиусу
-                if (networkRadius != null) {
-                    boolean nearOks = false;
-                    for (Coordinate oksCoord : oksCoordsUtm) {
-                        if (point.distance(oksCoord) <= networkRadius) {
-                            nearOks = true;
-                            break;
-                        }
-                    }
-                    if (!nearOks) continue;
-                }
-
                 String netPointId = "net_" + net.getId() + "_" + (networkPointCounter++);
                 networkNodes.add(new Node(netPointId, point, point, true, true));
             }
@@ -201,25 +175,37 @@ public class GraphBuilder {
         }
         log.info("Вершин препятствий: {}", obstacleNodes.size());
 
-        // MAX_EDGE_LENGTH — зависит от радиуса
-        double maxEdgeLength = Math.max(
-                config.getMaxEdgeLengthMin(),
-                networkRadius != null ? networkRadius * 2 : config.getMaxEdgeLengthMin());
+        // 5. STRtree для точек сети
+        STRtree networkIndex = new STRtree();
+        for (Node node : networkNodes) {
+            networkIndex.insert(new Envelope(node.coordinateUtm), node);
+        }
+        networkIndex.build();
 
-        // Собираем все целевые узлы
-        List<Node> allTargetNodes = new ArrayList<>();
-        allTargetNodes.addAll(targetNodes);
-        allTargetNodes.addAll(networkNodes);
+        // 6. STRtree для вершин препятствий
+        STRtree obstacleIndex = new STRtree();
+        for (Node node : obstacleNodes) {
+            obstacleIndex.insert(new Envelope(node.coordinateUtm), node);
+        }
+        obstacleIndex.build();
 
-        // 5. Рёбра целевой ↔ точка сети / целевой ↔ целевой
+        double maxEdgeLength = config.getMaxEdgeLength();
+        double obstacleRadius = config.getTargetObstacleRadius();
+
+        log.info("MAX_EDGE_LENGTH = {} м, TARGET_OBSTACLE_RADIUS = {} м", maxEdgeLength, obstacleRadius);
+
+        // 7. Рёбра: целевой ↔ точка сети (через STRtree)
         ConcurrentLinkedQueue<Edge> edgesTargetNetwork = new ConcurrentLinkedQueue<>();
-        allTargetNodes.parallelStream().forEach(from -> {
-            for (Node to : allTargetNodes) {
-                if (from == to) continue;
-                if (from.isNetworkPoint && to.isNetworkPoint) continue;
-                if (!from.isNetworkPoint && !to.isNetworkPoint) {
-                    if (from.id.compareTo(to.id) >= 0) continue;
-                }
+        targetNodes.parallelStream().forEach(from -> {
+            Envelope searchEnv = new Envelope(
+                    from.coordinateUtm.x - maxEdgeLength,
+                    from.coordinateUtm.x + maxEdgeLength,
+                    from.coordinateUtm.y - maxEdgeLength,
+                    from.coordinateUtm.y + maxEdgeLength);
+
+            List<?> candidates = networkIndex.query(searchEnv);
+            for (Object obj : candidates) {
+                Node to = (Node) obj;
                 double dist = from.coordinateUtm.distance(to.coordinateUtm);
                 if (dist > maxEdgeLength) continue;
 
@@ -231,12 +217,38 @@ public class GraphBuilder {
         });
         log.info("Рёбер целевой-сеть: {}", edgesTargetNetwork.size());
 
-        // 6. Рёбра целевой ↔ вершина препятствия
+        // 8. Рёбра: целевой ↔ целевой (ОКС ↔ камеры)
+        ConcurrentLinkedQueue<Edge> edgesTargetTarget = new ConcurrentLinkedQueue<>();
+        for (int i = 0; i < targetNodes.size(); i++) {
+            Node from = targetNodes.get(i);
+            for (int j = i + 1; j < targetNodes.size(); j++) {
+                Node to = targetNodes.get(j);
+                double dist = from.coordinateUtm.distance(to.coordinateUtm);
+                if (dist > maxEdgeLength) continue;
+
+                Edge edge = tryBuildEdge(from, to, preparedObstacles, diameter);
+                if (edge != null) {
+                    edgesTargetTarget.add(edge);
+                }
+            }
+        }
+        log.info("Рёбер целевой-целевой: {}", edgesTargetTarget.size());
+
+        // 9. Рёбра: целевой ↔ вершина препятствия (через STRtree)
         ConcurrentLinkedQueue<Edge> edgesTargetObstacle = new ConcurrentLinkedQueue<>();
         targetNodes.parallelStream().forEach(target -> {
-            for (Node obsNode : obstacleNodes) {
+            Envelope searchEnv = new Envelope(
+                    target.coordinateUtm.x - obstacleRadius,
+                    target.coordinateUtm.x + obstacleRadius,
+                    target.coordinateUtm.y - obstacleRadius,
+                    target.coordinateUtm.y + obstacleRadius);
+
+            List<?> candidates = obstacleIndex.query(searchEnv);
+            for (Object obj : candidates) {
+                Node obsNode = (Node) obj;
                 double dist = target.coordinateUtm.distance(obsNode.coordinateUtm);
-                if (dist > config.getTargetObstacleRadius()) continue;
+                if (dist > obstacleRadius) continue;
+
                 Edge edge = tryBuildEdge(target, obsNode, preparedObstacles, diameter);
                 if (edge != null) {
                     edgesTargetObstacle.add(edge);
@@ -247,6 +259,7 @@ public class GraphBuilder {
 
         List<Edge> allEdges = new ArrayList<>();
         allEdges.addAll(edgesTargetNetwork);
+        allEdges.addAll(edgesTargetTarget);
         allEdges.addAll(edgesTargetObstacle);
 
         long elapsed = System.currentTimeMillis() - startTime;

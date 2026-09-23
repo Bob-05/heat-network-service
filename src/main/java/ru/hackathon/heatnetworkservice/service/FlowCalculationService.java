@@ -6,12 +6,7 @@ import org.locationtech.jts.geom.LineString;
 import org.springframework.stereotype.Service;
 import ru.hackathon.heatnetworkservice.geometry.GraphBuilder;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 @Slf4j
 @Service
@@ -108,21 +103,35 @@ public class FlowCalculationService {
     }
 
     /**
-     * НОВЫЙ метод — рассчитывает ДУ для ОБЪЕДИНЁННЫХ участков.
+     * Рассчитывает ДУ для ОБЪЕДИНЁННЫХ участков.
      *
-     * Логика (ТЗ раздел 2.3):
-     * - Расход участка = сумма расходов всех ОКС, которые через него проходят.
-     * - ДУ выбирается по суммарному расходу и предельной длине.
-     * - Предельная длина проверяется по каждому непрерывному пути (разъяснение 2).
+     * Логика (подход B):
+     * 1. Для каждого маршрута суммируем длины ВСЕХ его рёбер → totalPathLength.
+     * 2. Для каждого уникального ребра берём МАКСИМАЛЬНУЮ суммарную длину
+     *    среди маршрутов, через него проходящих.
+     * 3. Подбираем ДУ по суммарному расходу и этой максимальной длине.
+     * 4. Все рёбра одного маршрута получают один ДУ.
+     *
+     * Это гарантирует соблюдение предельной длины по каждому непрерывному пути
+     * (разъяснение 2 ТЗ).
      */
     public List<CalculatedSegment> calculateMergedSegments(List<RoutingService.Route> routes) {
         log.info("Расчёт объединённых участков для {} маршрутов", routes.size());
 
-        // 1. Группируем рёбра по паре (fromId, toId)
+        // 1. Считаем суммарную длину каждого маршрута
+        Map<String, Double> oksTotalLength = new HashMap<>();
+        for (RoutingService.Route route : routes) {
+            if (route.oksFlowTph == null) continue;
+            oksTotalLength.put(route.oksId, route.totalLength);
+        }
+
+        // 2. Группируем рёбра по паре (fromId, toId)
         Map<String, EdgeInfo> edgeGroups = new LinkedHashMap<>();
 
         for (RoutingService.Route route : routes) {
             if (route.oksFlowTph == null) continue;
+
+            double routeLength = route.totalLength;
 
             for (GraphBuilder.Edge edge : route.edges) {
                 String key = makeEdgeKey(edge.fromId, edge.toId);
@@ -140,16 +149,22 @@ public class FlowCalculationService {
                     info.oksIds.add(route.oksId);
                     info.totalFlowTph += route.oksFlowTph;
                 }
+
+                // Максимальная суммарная длина пути среди ОКС, идущих через это ребро
+                if (routeLength > info.maxPathLength) {
+                    info.maxPathLength = routeLength;
+                }
             }
         }
 
         log.info("Уникальных рёбер: {}", edgeGroups.size());
 
-        // 2. Для каждого уникального ребра подбираем ДУ и считаем стоимость
+        // 3. Для каждого уникального ребра подбираем ДУ и считаем стоимость
         List<CalculatedSegment> result = new ArrayList<>();
 
         for (EdgeInfo info : edgeGroups.values()) {
-            int diameter = selectDiameter(info.totalFlowTph, info.length);
+            // ДУ по суммарному расходу И максимальной длине пути
+            int diameter = selectDiameter(info.totalFlowTph, info.maxPathLength);
 
             CalculatedSegment seg = new CalculatedSegment();
             seg.oksId = String.join(",", info.oksIds);
@@ -167,9 +182,13 @@ public class FlowCalculationService {
 
             result.add(seg);
 
-            log.info("Ребро {}→{}: расход {} т/ч ({} ОКС), ДУ={}, длина {} м",
-                    info.fromId, info.toId, Math.round(info.totalFlowTph * 100.0) / 100.0,
-                    info.oksIds.size(), diameter, Math.round(info.length));
+            log.info("Ребро {}→{}: расход {} т/ч ({} ОКС), макс.длина пути {} м, ДУ={}, длина ребра {} м",
+                    info.fromId, info.toId,
+                    Math.round(info.totalFlowTph * 100.0) / 100.0,
+                    info.oksIds.size(),
+                    Math.round(info.maxPathLength),
+                    diameter,
+                    Math.round(info.length));
         }
 
         log.info("Объединённых участков: {}", result.size());
@@ -197,5 +216,7 @@ public class FlowCalculationService {
         double kspec;
         Set<String> oksIds = new HashSet<>();
         double totalFlowTph = 0;
+        /** Максимальная суммарная длина пути среди ОКС, через это ребро проходящих. */
+        double maxPathLength = 0;
     }
 }

@@ -14,7 +14,7 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
         dialect: org.hibernate.spatial.dialect.postgis.PostgisPG10Dialect
@@ -27,10 +27,6 @@ logging:
     ru.hackathon.heatnetworkservice.geometry.GraphBuilder: INFO
 
 routing:
-  max-edge-length-min: 2000.0
+  max-edge-length: 10000.0
   network-split-step: 5.0
-  network-radius-start: 100.0
-  network-radius-multiplier: 2.0
-  max-radius-iterations: 10
-  no-progress-iterations-to-stop: 2
-  target-obstacle-radius: 500.0
+  target-obstacle-radius: 2000.0

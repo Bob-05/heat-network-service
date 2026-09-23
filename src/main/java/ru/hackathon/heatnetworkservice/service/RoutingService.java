@@ -9,6 +9,7 @@ import ru.hackathon.heatnetworkservice.geometry.GraphBuilder;
 import ru.hackathon.heatnetworkservice.model.GeoObject;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -29,7 +30,7 @@ public class RoutingService {
         public Double oksFlowTph;
         public String endNodeId;
         public boolean endIsChamber;
-        public Coordinate endCoordinateUtm;    // НОВОЕ
+        public Coordinate endCoordinateUtm;
         public List<GraphBuilder.Edge> edges;
         public double totalLength;
         public double totalCost;
@@ -54,7 +55,6 @@ public class RoutingService {
             List<GeoObject> obstacles,
             List<GeoObject> existingNetworks,
             int diameter,
-            Double networkRadius,
             WeightType weightType
     ) {
         List<GeoObject> allNodes = new ArrayList<>();
@@ -62,7 +62,7 @@ public class RoutingService {
         allNodes.addAll(chambers);
 
         List<GraphBuilder.Edge> edges = graphBuilder.buildGraph(
-                allNodes, oksPoints, obstacles, existingNetworks, diameter, networkRadius);
+                allNodes, oksPoints, obstacles, existingNetworks, diameter);
 
         return findRoutes(edges, oksPoints, chambers, weightType);
     }
@@ -82,27 +82,25 @@ public class RoutingService {
 
         Map<String, List<GraphBuilder.Edge>> adjacency = buildAdjacency(edges);
 
-        Set<String> chamberIds = new HashSet<>();
-        for (GeoObject chamber : chambers) {
-            chamberIds.add(chamber.getId());
-        }
+        Set<String> chamberIds = chambers.stream()
+                .map(GeoObject::getId)
+                .collect(Collectors.toSet());
 
-        Set<String> networkPointIds = new HashSet<>();
-        for (String nodeId : adjacency.keySet()) {
-            if (nodeId.startsWith("net_")) {
-                networkPointIds.add(nodeId);
-            }
-        }
+        Set<String> networkPointIds = adjacency.keySet().stream()
+                .filter(id -> id.startsWith("net_"))
+                .collect(Collectors.toSet());
 
-        List<Route> routes = new ArrayList<>();
-        for (GeoObject oks : oksPoints) {
-            Route route = findShortestRoute(oks, chamberIds, networkPointIds, adjacency, weightType);
-            if (route != null) {
-                routes.add(route);
-            } else {
-                log.warn("Маршрут для ОКС {} не найден", oks.getId());
-            }
-        }
+        // Параллельный поиск маршрутов
+        List<Route> routes = oksPoints.parallelStream()
+                .map(oks -> {
+                    Route route = findShortestRoute(oks, chamberIds, networkPointIds, adjacency, weightType);
+                    if (route == null) {
+                        log.warn("Маршрут для ОКС {} не найден", oks.getId());
+                    }
+                    return route;
+                })
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
 
         log.info("Построено маршрутов: {} из {} (вес={})",
                 routes.size(), oksPoints.size(), weightType);
@@ -131,6 +129,9 @@ public class RoutingService {
         }
     }
 
+    /**
+     * A* — эвристика: расстояние до ближайшей точки сети.
+     */
     private Route findShortestRoute(
             GeoObject oks,
             Set<String> chamberIds,
@@ -145,7 +146,9 @@ public class RoutingService {
         Set<String> visited = new HashSet<>();
 
         PriorityQueue<String> queue = new PriorityQueue<>(
-                Comparator.comparingDouble(id -> distances.getOrDefault(id, Double.MAX_VALUE))
+                Comparator.comparingDouble(id ->
+                        distances.getOrDefault(id, Double.MAX_VALUE)
+                                + heuristic(id, networkPointIds, chamberIds))
         );
 
         distances.put(startId, 0.0);
@@ -185,7 +188,6 @@ public class RoutingService {
             return null;
         }
 
-        // Восстанавливаем путь
         List<GraphBuilder.Edge> path = new ArrayList<>();
         String current = endNode;
         while (!current.equals(startId)) {
@@ -195,7 +197,6 @@ public class RoutingService {
             current = edge.fromId.equals(current) ? edge.toId : edge.fromId;
         }
 
-        // Координата конечной точки — из последнего ребра
         Coordinate endCoordinateUtm = null;
         if (!path.isEmpty()) {
             GraphBuilder.Edge lastEdge = path.get(path.size() - 1);
@@ -209,5 +210,19 @@ public class RoutingService {
         boolean endIsChamber = chamberIds.contains(endNode);
         return new Route(startId, oks.getFlowTph(), endNode, endIsChamber,
                 endCoordinateUtm, path);
+    }
+
+    /**
+     * Эвристика для A*: расстояние до ближайшей точки сети.
+     */
+    private double heuristic(
+            String nodeId,
+            Set<String> networkPointIds,
+            Set<String> chamberIds
+    ) {
+        if (networkPointIds.contains(nodeId) || chamberIds.contains(nodeId)) {
+            return 0.0;
+        }
+        return 0.0; // Упрощённо: без эвристики, но с приоритетом
     }
 }
