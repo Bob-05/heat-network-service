@@ -21,6 +21,10 @@ public class GeoObject {
     @Column(name = "id", nullable = false)
     private String id;
 
+    /** Тип исходного ID: "string" или "number". */
+    @Column(name = "id_type")
+    private String idType;
+
     @Column(name = "object_type", nullable = false)
     private String objectType;
 

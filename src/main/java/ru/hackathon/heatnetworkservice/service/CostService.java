@@ -6,7 +6,9 @@ import org.springframework.stereotype.Service;
 import ru.hackathon.heatnetworkservice.model.GeoObject;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -35,9 +37,6 @@ public class CostService {
         public List<TieInService.TieInResult> tieIns;
     }
 
-    /**
-     * Рассчитывает стоимость варианта с учётом TieInService.
-     */
     public CostResult calculate(
             List<FlowCalculationService.CalculatedSegment> segments,
             List<String> connectedOksIds,
@@ -52,7 +51,7 @@ public class CostService {
 
         CostResult result = new CostResult();
 
-        // 1. Стоимость участков
+        // 1. Стоимость участков (дедупликация уже сделана в FlowCalculationService)
         double segmentsCost = 0;
         double totalLength = 0;
         for (FlowCalculationService.CalculatedSegment seg : segments) {
@@ -61,12 +60,11 @@ public class CostService {
         }
         result.newNetworkLength = totalLength;
 
-        // 2. Определяем тип присоединения через TieInService
+        // 2. Врезки и камеры
         List<TieInService.TieInResult> tieIns = tieInService.determineTieIns(
                 routes, chambers, existingNetworks, oksDiameters);
         result.tieIns = tieIns;
 
-        // 3. Считаем врезки и новые камеры
         int tieInCount = 0;
         double tieInCost = 0;
         double chamberCost = 0;
@@ -84,7 +82,6 @@ public class CostService {
         result.existingChamberTieInCost = tieInCost;
         result.chamberConstructionCost = chamberCost;
 
-        // 4. Итоговая стоимость строительства
         result.constructionCost = segmentsCost + chamberCost + tieInCost;
 
         log.info("Стоимость участков: {} руб., длина: {} м",
@@ -95,11 +92,13 @@ public class CostService {
                 tieIns.size() - tieInCount, Math.round(chamberCost));
         log.info("Стоимость строительства: {} руб.", Math.round(result.constructionCost));
 
-        // 5. Штраф за неподключённые точки
+        // 3. Штраф за неподключённые точки
         result.unconnectedOksIds = new ArrayList<>();
+        Set<String> connectedSet = new HashSet<>(connectedOksIds);
         double penalty = 0;
+
         for (GeoObject oks : allOks) {
-            if (!connectedOksIds.contains(oks.getId())) {
+            if (!connectedSet.contains(oks.getId())) {
                 result.unconnectedOksIds.add(oks.getId());
                 double flow = oks.getFlowTph() != null ? oks.getFlowTph() : 0;
                 penalty += UNCONNECTED_BASE_PENALTY + UNCONNECTED_FLOW_PENALTY * flow;
@@ -108,10 +107,10 @@ public class CostService {
         }
         result.unconnectedPenalty = penalty;
 
-        // 6. Итоговая стоимость
+        // 4. Итоговая стоимость
         result.calculatedCost = result.constructionCost + result.unconnectedPenalty;
 
-        // 7. Score
+        // 5. Score
         result.score = SCORE_COST_WEIGHT * (result.calculatedCost / SCORE_COST_DIVISOR)
                 + SCORE_LENGTH_WEIGHT * (result.newNetworkLength / SCORE_LENGTH_DIVISOR);
 

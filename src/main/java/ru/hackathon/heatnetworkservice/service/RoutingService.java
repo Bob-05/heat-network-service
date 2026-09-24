@@ -6,6 +6,7 @@ import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
 import org.springframework.stereotype.Service;
 import ru.hackathon.heatnetworkservice.geometry.GraphBuilder;
+import ru.hackathon.heatnetworkservice.geometry.OksPolygonIndex;
 import ru.hackathon.heatnetworkservice.model.GeoObject;
 
 import java.util.*;
@@ -17,6 +18,7 @@ import java.util.stream.Collectors;
 public class RoutingService {
 
     private final GraphBuilder graphBuilder;
+    private final OksPolygonIndex oksPolygonIndex;
     private final GeometryFactory geometryFactory = new GeometryFactory();
 
     public enum WeightType {
@@ -49,24 +51,52 @@ public class RoutingService {
         }
     }
 
-    public List<Route> buildRoutes(
+    /**
+     * Строит граф один раз. Используется VariantService для переиспользования
+     * между весами LENGTH/COST/SCORE (граф от веса не зависит).
+     */
+    public List<GraphBuilder.Edge> buildGraphOnce(
             List<GeoObject> oksPoints,
             List<GeoObject> chambers,
             List<GeoObject> obstacles,
+            List<GeoObject> oksRestrictions,
             List<GeoObject> existingNetworks,
-            int diameter,
-            WeightType weightType
+            int diameter
     ) {
+        oksPolygonIndex.build(oksPoints, oksRestrictions);
+
         List<GeoObject> allNodes = new ArrayList<>();
         allNodes.addAll(oksPoints);
         allNodes.addAll(chambers);
 
-        List<GraphBuilder.Edge> edges = graphBuilder.buildGraph(
+        return graphBuilder.buildGraph(
                 allNodes, oksPoints, obstacles, existingNetworks, diameter);
+    }
 
+    /**
+     * Совместимость: строит граф и сразу ищет маршруты.
+     * Оставлено для тестов и обратной совместимости.
+     */
+    public List<Route> buildRoutes(
+            List<GeoObject> oksPoints,
+            List<GeoObject> chambers,
+            List<GeoObject> obstacles,
+            List<GeoObject> oksRestrictions,
+            List<GeoObject> existingNetworks,
+            int diameter,
+            WeightType weightType
+    ) {
+        List<GraphBuilder.Edge> edges = buildGraphOnce(
+                oksPoints, chambers, obstacles, oksRestrictions,
+                existingNetworks, diameter);
         return findRoutes(edges, oksPoints, chambers, weightType);
     }
 
+    /**
+     * Поиск маршрутов по уже построенному графу.
+     * ТЗ п.2.1: разветвления только в камерах → ОКС запрещены как транзит.
+     * ТЗ п.2.4: решение «существующая камера или новая» принимает TieInService.
+     */
     public List<Route> findRoutes(
             List<GraphBuilder.Edge> edges,
             List<GeoObject> oksPoints,
@@ -82,7 +112,7 @@ public class RoutingService {
 
         Map<String, List<GraphBuilder.Edge>> adjacency = buildAdjacency(edges);
 
-        Set<String> chamberIds = chambers.stream()
+        Set<String> oksIds = oksPoints.stream()
                 .map(GeoObject::getId)
                 .collect(Collectors.toSet());
 
@@ -90,10 +120,10 @@ public class RoutingService {
                 .filter(id -> id.startsWith("net_"))
                 .collect(Collectors.toSet());
 
-        // Параллельный поиск маршрутов
         List<Route> routes = oksPoints.parallelStream()
                 .map(oks -> {
-                    Route route = findShortestRoute(oks, chamberIds, networkPointIds, adjacency, weightType);
+                    Route route = findShortestRoute(
+                            oks, networkPointIds, oksIds, adjacency, weightType);
                     if (route == null) {
                         log.warn("Маршрут для ОКС {} не найден", oks.getId());
                     }
@@ -129,17 +159,28 @@ public class RoutingService {
         }
     }
 
-    /**
-     * A* — эвристика: расстояние до ближайшей точки сети.
-     */
     private Route findShortestRoute(
             GeoObject oks,
-            Set<String> chamberIds,
             Set<String> networkPointIds,
+            Set<String> oksIds,
+            Map<String, List<GraphBuilder.Edge>> adjacency,
+            WeightType weightType
+    ) {
+        return dijkstra(oks, networkPointIds, oksIds, adjacency, weightType);
+    }
+
+    private Route dijkstra(
+            GeoObject oks,
+            Set<String> targetIds,
+            Set<String> forbiddenIntermediateIds,
             Map<String, List<GraphBuilder.Edge>> adjacency,
             WeightType weightType
     ) {
         String startId = oks.getId();
+
+        if (targetIds.isEmpty()) {
+            return null;
+        }
 
         Map<String, Double> distances = new HashMap<>();
         Map<String, GraphBuilder.Edge> predecessors = new HashMap<>();
@@ -147,8 +188,7 @@ public class RoutingService {
 
         PriorityQueue<String> queue = new PriorityQueue<>(
                 Comparator.comparingDouble(id ->
-                        distances.getOrDefault(id, Double.MAX_VALUE)
-                                + heuristic(id, networkPointIds, chamberIds))
+                        distances.getOrDefault(id, Double.MAX_VALUE))
         );
 
         distances.put(startId, 0.0);
@@ -162,16 +202,22 @@ public class RoutingService {
             if (visited.contains(current)) continue;
             visited.add(current);
 
-            if (!current.equals(startId)
-                    && (chamberIds.contains(current) || networkPointIds.contains(current))) {
+            if (!current.equals(startId) && targetIds.contains(current)) {
                 endNode = current;
                 break;
             }
 
-            List<GraphBuilder.Edge> neighbors = adjacency.getOrDefault(current, Collections.emptyList());
+            List<GraphBuilder.Edge> neighbors =
+                    adjacency.getOrDefault(current, Collections.emptyList());
             for (GraphBuilder.Edge edge : neighbors) {
                 String neighbor = edge.fromId.equals(current) ? edge.toId : edge.fromId;
                 if (visited.contains(neighbor)) continue;
+
+                // ТЗ п.2.1: разветвления только в тепловых камерах.
+                if (forbiddenIntermediateIds.contains(neighbor)
+                        && !targetIds.contains(neighbor)) {
+                    continue;
+                }
 
                 double weight = getEdgeWeight(edge, weightType);
                 double newDistance = distances.get(current) + weight;
@@ -207,22 +253,7 @@ public class RoutingService {
             }
         }
 
-        boolean endIsChamber = chamberIds.contains(endNode);
-        return new Route(startId, oks.getFlowTph(), endNode, endIsChamber,
+        return new Route(startId, oks.getFlowTph(), endNode, false,
                 endCoordinateUtm, path);
-    }
-
-    /**
-     * Эвристика для A*: расстояние до ближайшей точки сети.
-     */
-    private double heuristic(
-            String nodeId,
-            Set<String> networkPointIds,
-            Set<String> chamberIds
-    ) {
-        if (networkPointIds.contains(nodeId) || chamberIds.contains(nodeId)) {
-            return 0.0;
-        }
-        return 0.0; // Упрощённо: без эвристики, но с приоритетом
     }
 }

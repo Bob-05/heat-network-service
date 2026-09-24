@@ -65,7 +65,18 @@ public class GeoJsonReaderService {
             }
 
             GeoObject geoObject = new GeoObject();
-            geoObject.setId(properties.get("id").asText());
+
+            JsonNode idNode = properties.get("id");
+            if (idNode != null) {
+                if (idNode.isNumber()) {
+                    geoObject.setId(String.valueOf(idNode.asLong()));
+                    geoObject.setIdType("number");
+                } else {
+                    geoObject.setId(idNode.asText());
+                    geoObject.setIdType("string");
+                }
+            }
+
             geoObject.setObjectType(properties.get("object_type").asText());
 
             if (properties.has("restriction_type")) {
@@ -89,7 +100,6 @@ public class GeoJsonReaderService {
 
             geoObject.setProperties(properties.toString());
 
-            // Парсим геометрию
             Geometry geom = parseGeometry(geometry);
             if (geom != null) {
                 geoObject.setGeometry(geom);

@@ -3,6 +3,7 @@ package ru.hackathon.heatnetworkservice.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import ru.hackathon.heatnetworkservice.geometry.GraphBuilder;
 import ru.hackathon.heatnetworkservice.model.GeoObject;
 
 import java.util.ArrayList;
@@ -12,6 +13,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -22,7 +24,6 @@ public class VariantService {
     private final FlowCalculationService flowCalculationService;
     private final CostService costService;
 
-    /** Минимальный ДУ для построения графа. */
     private static final int MIN_DIAMETER = 50;
 
     public static class Variant {
@@ -36,10 +37,6 @@ public class VariantService {
         public List<GeoObject> chambers;
     }
 
-    /**
-     * Формирует до 3 содержательно отличающихся вариантов.
-     * Одна итерация — без расширения радиуса и без итераций по ДУ.
-     */
     public List<Variant> buildVariants(
             List<GeoObject> oksPoints,
             List<GeoObject> chambers,
@@ -48,26 +45,41 @@ public class VariantService {
     ) {
         log.info("=== Формирование вариантов ===");
 
+        List<GeoObject> oksRestrictions = obstacles.stream()
+                .filter(o -> "oks".equals(o.getRestrictionType()))
+                .collect(Collectors.toList());
+
+        List<GeoObject> otherObstacles = obstacles.stream()
+                .filter(o -> !"oks".equals(o.getRestrictionType()))
+                .collect(Collectors.toList());
+
+        // Граф от веса не зависит — строим один раз и переиспользуем для трёх весов.
+        List<GeoObject> allObstacles = new ArrayList<>(otherObstacles);
+        allObstacles.addAll(oksRestrictions);
+
+        long t0 = System.currentTimeMillis();
+        List<GraphBuilder.Edge> edges = routingService.buildGraphOnce(
+                oksPoints, chambers, allObstacles, oksRestrictions,
+                existingNetworks, MIN_DIAMETER);
+        log.info("Граф построен один раз: {} рёбер за {} мс",
+                edges.size(), System.currentTimeMillis() - t0);
+
         List<Variant> variants = new ArrayList<>();
-
-        Variant vLength = runVariant(oksPoints, chambers, obstacles, existingNetworks,
-                RoutingService.WeightType.LENGTH, "vL");
-        Variant vCost = runVariant(oksPoints, chambers, obstacles, existingNetworks,
-                RoutingService.WeightType.COST, "vC");
-        Variant vScore = runVariant(oksPoints, chambers, obstacles, existingNetworks,
-                RoutingService.WeightType.SCORE, "vS");
-
-        variants.add(vLength);
-        variants.add(vCost);
-        variants.add(vScore);
+        variants.add(runVariant(edges, oksPoints, chambers,
+                existingNetworks, RoutingService.WeightType.LENGTH, "vL"));
+        variants.add(runVariant(edges, oksPoints, chambers,
+                existingNetworks, RoutingService.WeightType.COST, "vC"));
+        variants.add(runVariant(edges, oksPoints, chambers,
+                existingNetworks, RoutingService.WeightType.SCORE, "vS"));
 
         List<Variant> uniqueVariants = filterUniqueVariants(variants);
-
         uniqueVariants.sort(Comparator.comparingDouble(v -> v.cost.score));
+
         for (int i = 0; i < uniqueVariants.size(); i++) {
             Variant v = uniqueVariants.get(i);
             v.variantId = "v" + (i + 1);
             v.rank = i + 1;
+
             log.info("Вариант {}: rank={}, weight={}, score={}, cost={}, length={}",
                     v.variantId, v.rank, v.weightType,
                     String.format(java.util.Locale.US, "%.4f", v.cost.score),
@@ -75,44 +87,41 @@ public class VariantService {
                     Math.round(v.cost.newNetworkLength));
         }
 
-        log.info("=== Итого вариантов: {} ===", uniqueVariants.size());
         return uniqueVariants;
     }
 
     private Variant runVariant(
+            List<GraphBuilder.Edge> edges,
             List<GeoObject> oksPoints,
             List<GeoObject> chambers,
-            List<GeoObject> obstacles,
             List<GeoObject> existingNetworks,
             RoutingService.WeightType weightType,
             String tempId
     ) {
-        // ОДИН вызов без радиуса и без итераций по ДУ
-        List<RoutingService.Route> routes = routingService.buildRoutes(
-                oksPoints, chambers, obstacles, existingNetworks, MIN_DIAMETER, weightType);
+        List<RoutingService.Route> routes = routingService.findRoutes(
+                edges, oksPoints, chambers, weightType);
 
         List<FlowCalculationService.CalculatedSegment> segments =
                 flowCalculationService.calculateMergedSegments(routes);
 
+        // ДУ для камер берём из РЕАЛЬНЫХ объединённых сегментов
         Map<String, Integer> oksDiameters = new HashMap<>();
-        for (RoutingService.Route route : routes) {
-            if (route.oksFlowTph == null) continue;
-            int routeDiameter = flowCalculationService.selectDiameter(
-                    route.oksFlowTph, route.totalLength);
-            oksDiameters.put(route.oksId, routeDiameter);
-        }
-
-        List<String> connectedOksIds = new ArrayList<>();
-        for (RoutingService.Route route : routes) {
-            connectedOksIds.add(route.oksId);
-        }
-
-        for (GeoObject oks : oksPoints) {
-            if (!connectedOksIds.contains(oks.getId())) {
-                log.warn("ОКС {} не подключена. Причина: не найден допустимый маршрут (расход {} т/ч)",
-                        oks.getId(), oks.getFlowTph());
+        for (FlowCalculationService.CalculatedSegment seg : segments) {
+            if (seg.oksId == null) continue;
+            String[] singleOksIds = seg.oksId.split(",");
+            for (String singleId : singleOksIds) {
+                String trimmed = singleId.trim();
+                if (trimmed.isEmpty()) continue;
+                int currentMax = oksDiameters.getOrDefault(trimmed, 0);
+                if (seg.diameter > currentMax) {
+                    oksDiameters.put(trimmed, seg.diameter);
+                }
             }
         }
+
+        List<String> connectedOksIds = routes.stream()
+                .map(r -> r.oksId)
+                .collect(Collectors.toList());
 
         CostService.CostResult cost = costService.calculate(
                 segments, connectedOksIds, oksPoints,
@@ -149,7 +158,9 @@ public class VariantService {
     private String buildSignature(Variant v) {
         List<String> pairs = new ArrayList<>();
         for (RoutingService.Route route : v.routes) {
-            pairs.add(route.oksId + "→" + route.endNodeId + "|" + route.endIsChamber);
+            for (var edge : route.edges) {
+                pairs.add(edge.fromId + "→" + edge.toId);
+            }
         }
         pairs.sort(String::compareTo);
         return String.join(";", pairs);

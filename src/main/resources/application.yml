@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
 
 spring:
   application:
@@ -10,23 +10,50 @@ spring:
     username: user
     password: password
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
 
   jpa:
     hibernate:
       ddl-auto: update
     show-sql: false
+    open-in-view: false
     properties:
       hibernate:
         dialect: org.hibernate.spatial.dialect.postgis.PostgisPG10Dialect
+        jdbc:
+          batch_size: 100
+        order_inserts: true
+        order_updates: true
+
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+
+  jackson:
+    default-property-inclusion: non_null
+
+  task:
+    execution:
+      pool:
+        core-size: 4
+        max-size: 8
+        queue-capacity: 100
 
 logging:
   level:
     root: INFO
     ru.hackathon: INFO
-    ru.hackathon.heatnetworkservice.geometry.ObstacleChecker: WARN
     ru.hackathon.heatnetworkservice.geometry.GraphBuilder: INFO
+    ru.hackathon.heatnetworkservice.geometry.ObstacleChecker: WARN
+    ru.hackathon.heatnetworkservice.service.RoutingService: INFO
+    ru.hackathon.heatnetworkservice.service.FlowCalculationService: INFO
+    ru.hackathon.heatnetworkservice.service.VariantService: INFO
+    ru.hackathon.heatnetworkservice.service.CostService: INFO
 
 routing:
-  max-edge-length: 10000.0
+  max-edge-length: 5000.0
   network-split-step: 5.0
   target-obstacle-radius: 2000.0

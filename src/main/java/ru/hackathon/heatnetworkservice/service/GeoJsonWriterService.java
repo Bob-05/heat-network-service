@@ -16,7 +16,9 @@ import ru.hackathon.heatnetworkservice.geometry.GraphBuilder;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -27,9 +29,6 @@ public class GeoJsonWriterService {
     private final GeometryFactory geometryFactory = new GeometryFactory();
     private final CoordinateTransformer coordinateTransformer;
 
-    /**
-     * Записывает список вариантов в GeoJSON-файл.
-     */
     public void writeVariants(File outputFile, List<VariantService.Variant> variants) throws IOException {
         log.info("Запись GeoJSON: {} вариантов в {}", variants.size(), outputFile.getAbsolutePath());
 
@@ -56,15 +55,18 @@ public class GeoJsonWriterService {
     private void writeVariant(JsonGenerator gen, VariantService.Variant variant) throws IOException {
         String variantId = variant.variantId;
 
+        // Карта маппинга net_... → ID узла
+        Map<String, String> nodeIdMap = buildNodeIdMap(variant);
+
         // 1. Участки heat_network
         int netIndex = 0;
         for (FlowCalculationService.CalculatedSegment seg : variant.segments) {
             netIndex++;
-            writeNetworkSegment(gen, variantId, netIndex, seg);
+            writeNetworkSegment(gen, variantId, netIndex, seg, nodeIdMap);
         }
 
-        // 2. Технические узлы (границы спецпроходов)
-        writeTechnicalNodes(gen, variantId, variant);
+        // 2. Технические узлы
+        writeTechnicalNodes(gen, variantId, variant, nodeIdMap);
 
         // 3. Новые камеры
         int chamberIndex = 0;
@@ -79,8 +81,39 @@ public class GeoJsonWriterService {
         writeVariantSummary(gen, variant);
     }
 
+    /**
+     * Строит карту маппинга: net_... → ID камеры или technical_node.
+     */
+    private Map<String, String> buildNodeIdMap(VariantService.Variant variant) {
+        Map<String, String> map = new HashMap<>();
+
+        // Для каждого маршрута: конечный net_... → ID камеры
+        for (RoutingService.Route route : variant.routes) {
+            if (route.endNodeId == null) continue;
+            if (!route.endNodeId.startsWith("net_")) continue;
+
+            // Ищем TieInResult для этого маршрута
+            for (TieInService.TieInResult tieIn : variant.cost.tieIns) {
+                if (tieIn.oksId != null && tieIn.oksId.contains(route.oksId)) {
+                    if (tieIn.useExistingChamber && tieIn.existingChamberId != null) {
+                        map.put(route.endNodeId, tieIn.existingChamberId);
+                    } else if (tieIn.newChamberId != null) {
+                        map.put(route.endNodeId, tieIn.newChamberId);
+                    }
+                    break;
+                }
+            }
+        }
+
+        return map;
+    }
+
     private void writeNetworkSegment(JsonGenerator gen, String variantId, int index,
-                                     FlowCalculationService.CalculatedSegment seg) throws IOException {
+                                     FlowCalculationService.CalculatedSegment seg,
+                                     Map<String, String> nodeIdMap) throws IOException {
+        String startId = mapNodeId(seg.segmentStartNodeId, nodeIdMap);
+        String endId = mapNodeId(seg.segmentEndNodeId, nodeIdMap);
+
         gen.writeStartObject();
         gen.writeStringField("type", "Feature");
 
@@ -92,8 +125,8 @@ public class GeoJsonWriterService {
         gen.writeStringField("id", variantId + "_net_" + index);
         gen.writeStringField("object_type", "heat_network");
         gen.writeStringField("variant_id", variantId);
-        gen.writeStringField("start_node_id", seg.segmentStartNodeId);
-        gen.writeStringField("end_node_id", seg.segmentEndNodeId);
+        gen.writeStringField("start_node_id", startId);
+        gen.writeStringField("end_node_id", endId);
         gen.writeNumberField("flow_tph", round(seg.flowTph, 2));
         gen.writeNumberField("diameter", seg.diameter);
         gen.writeNumberField("length", round(seg.length, 2));
@@ -104,6 +137,14 @@ public class GeoJsonWriterService {
         gen.writeEndObject();
 
         gen.writeEndObject();
+    }
+
+    private String mapNodeId(String originalId, Map<String, String> nodeIdMap) {
+        if (originalId == null) return null;
+        if (!originalId.startsWith("net_")) return originalId;
+        String mapped = nodeIdMap.get(originalId);
+        if (mapped != null) return mapped;
+        return originalId; // fallback
     }
 
     private void writeNewChamber(JsonGenerator gen, String variantId, int index,
@@ -118,7 +159,8 @@ public class GeoJsonWriterService {
         gen.writeEndObject();
 
         gen.writeObjectFieldStart("properties");
-        gen.writeStringField("id", variantId + "_chamber_" + index);
+        gen.writeStringField("id",
+                tieIn.newChamberId != null ? tieIn.newChamberId : variantId + "_chamber_" + index);
         gen.writeStringField("object_type", "heat_chamber");
         gen.writeStringField("variant_id", variantId);
         gen.writeNumberField("diameter", tieIn.newChamberDiameter);
@@ -129,7 +171,8 @@ public class GeoJsonWriterService {
     }
 
     private void writeTechnicalNodes(JsonGenerator gen, String variantId,
-                                     VariantService.Variant variant) throws IOException {
+                                     VariantService.Variant variant,
+                                     Map<String, String> nodeIdMap) throws IOException {
         int index = 0;
         java.util.Set<String> seen = new java.util.HashSet<>();
 
@@ -139,12 +182,9 @@ public class GeoJsonWriterService {
                 GraphBuilder.Edge current = edges.get(i);
                 GraphBuilder.Edge next = edges.get(i + 1);
 
-                boolean methodChanged = !current.layingMethod.equals(next.layingMethod);
-                if (!methodChanged) continue;
+                if (current.layingMethod.equals(next.layingMethod)) continue;
 
                 Coordinate boundaryUtm = current.toCoordinateUtm;
-
-                // Ключ по координате (округлённой до 1 м) — чтобы не дублировать
                 String key = Math.round(boundaryUtm.x) + "_" + Math.round(boundaryUtm.y);
                 if (seen.contains(key)) continue;
                 seen.add(key);
@@ -175,11 +215,15 @@ public class GeoJsonWriterService {
     private boolean isOksOrChamber(Coordinate coordUtm, VariantService.Variant variant) {
         for (var oks : variant.allOks) {
             Geometry utmGeom = coordinateTransformer.toUtm37n(oks.getGeometry());
-            if (utmGeom != null && utmGeom.getCoordinate().distance(coordUtm) < 1.0) return true;
+            if (utmGeom != null && utmGeom.getCoordinate().distance(coordUtm) < 1.0) {
+                return true;
+            }
         }
         for (var chamber : variant.chambers) {
             Geometry utmGeom = coordinateTransformer.toUtm37n(chamber.getGeometry());
-            if (utmGeom != null && utmGeom.getCoordinate().distance(coordUtm) < 1.0) return true;
+            if (utmGeom != null && utmGeom.getCoordinate().distance(coordUtm) < 1.0) {
+                return true;
+            }
         }
         return false;
     }
@@ -207,12 +251,38 @@ public class GeoJsonWriterService {
 
         gen.writeArrayFieldStart("unconnected_oks_ids");
         for (String oksId : cost.unconnectedOksIds) {
-            gen.writeString(oksId);
+            // Тип ID сохраняем как во входных данных
+            writeIdWithType(gen, oksId, variant);
         }
         gen.writeEndArray();
 
         gen.writeEndObject();
         gen.writeEndObject();
+    }
+
+    /**
+     * Пишет ID в нужном типе (string или number) в зависимости от исходного типа.
+     */
+    private void writeIdWithType(JsonGenerator gen, String id, VariantService.Variant variant) throws IOException {
+        String idType = "string";
+        if (variant.allOks != null) {
+            for (var oks : variant.allOks) {
+                if (id.equals(oks.getId())) {
+                    idType = oks.getIdType() != null ? oks.getIdType() : "string";
+                    break;
+                }
+            }
+        }
+
+        if ("number".equals(idType)) {
+            try {
+                gen.writeNumber(Long.parseLong(id));
+                return;
+            } catch (NumberFormatException e) {
+                // fallback
+            }
+        }
+        gen.writeString(id);
     }
 
     private Geometry toWgs84(Geometry utmGeometry) {

@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.geom.LineString;
+import org.locationtech.jts.geom.Polygon;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -12,9 +13,6 @@ import java.util.Map;
 @Component
 public class ObstacleChecker {
 
-    /**
-     * Минимальные горизонтальные расстояния (м).
-     */
     private static final Map<String, Double> MIN_DISTANCE = Map.of(
             "park", 1.0,
             "social_area", 1.0,
@@ -28,9 +26,6 @@ public class ObstacleChecker {
             "heat_network", 1.0
     );
 
-    /**
-     * Коэффициенты специального прохода.
-     */
     private static final Map<String, Double> KSPEC = Map.of(
             "road", 1.60,
             "tram_tracks", 1.75,
@@ -39,9 +34,6 @@ public class ObstacleChecker {
             "heat_network", 1.05
     );
 
-    /**
-     * Типы, которые НЕЛЬЗЯ пересекать.
-     */
     private static final Map<String, Boolean> FORBIDDEN = Map.of(
             "oks", true,
             "park", true,
@@ -51,17 +43,11 @@ public class ObstacleChecker {
             "railway", true
     );
 
-    /**
-     * Минимальный угол пересечения (в градусах).
-     */
     private static final Map<String, Double> MIN_ANGLE = Map.of(
             "road", 45.0,
             "tram_tracks", 45.0
     );
 
-    /**
-     * Расчётная ширина пары труб (м) по Таблице 1.
-     */
     private static final Map<Integer, Double> PIPE_WIDTH = Map.ofEntries(
             Map.entry(50, 0.400),
             Map.entry(65, 0.430),
@@ -100,42 +86,22 @@ public class ObstacleChecker {
         return FORBIDDEN.getOrDefault(restrictionType, false);
     }
 
-    /**
-     * Возвращает половину расчётной ширины пары труб (м).
-     */
     public double getHalfWidth(int diameter) {
         return PIPE_WIDTH.getOrDefault(diameter, 1.0) / 2.0;
     }
 
-    /**
-     * Проверяет, находится ли геометрия на допустимом расстоянии от препятствия
-     * с учётом расчётного габарита новой сети.
-     */
-    public boolean isDistanceOk(Geometry newNetwork, Geometry obstacle, String restrictionType, int diameter) {
-        if (newNetwork == null || obstacle == null) {
-            return true;
-        }
+    public boolean isDistanceOk(Geometry newNetwork, Geometry obstacle,
+                                String restrictionType, int diameter) {
+        if (newNetwork == null || obstacle == null) return true;
 
         double minDistance = getMinDistance(restrictionType, diameter);
         double halfWidth = getHalfWidth(diameter);
-        // Расстояние от оси новой сети до препятствия минус полширины = расстояние от габарита до препятствия
         double actualDistance = newNetwork.distance(obstacle) - halfWidth;
-
-        /*
-        boolean ok = actualDistance >= minDistance;
-        if (!ok) {
-            log.debug("Расстояние {} < {} для типа {} (ДУ={})",
-                    actualDistance, minDistance, restrictionType, diameter);
-        }
-        */
-
         return actualDistance >= minDistance;
     }
 
     public boolean intersects(Geometry newNetwork, Geometry obstacle) {
-        if (newNetwork == null || obstacle == null) {
-            return false;
-        }
+        if (newNetwork == null || obstacle == null) return false;
         return newNetwork.intersects(obstacle);
     }
 
@@ -144,35 +110,38 @@ public class ObstacleChecker {
     }
 
     /**
-     * Проверяет угол пересечения линии новой сети с линейным ограничением.
-     * Возвращает true, если угол >= минимального.
+     * Проверка угла пересечения В ТОЧКЕ ПЕРЕСЕЧЕНИЯ.
+     * Для линейной геометрии — угол между направлениями линий.
+     * Для полигональной — угол между направлением новой сети и границей
+     * полигона в точке входа.
      */
     public boolean isAngleOk(LineString newNetwork, Geometry obstacle, String restrictionType) {
         Double minAngle = MIN_ANGLE.get(restrictionType);
-        if (minAngle == null) {
-            return true; // Для этого типа нет требования по углу
-        }
+        if (minAngle == null) return true;
 
-        // Если препятствие — не линия, а полигон, проверяем угол с границей
-        // Упрощённо: проверяем угол с первой линией пересечения
         try {
             Geometry intersection = newNetwork.intersection(obstacle);
-            if (intersection == null || intersection.isEmpty()) {
-                return true;
-            }
+            if (intersection == null || intersection.isEmpty()) return true;
 
-            // Если препятствие — линия
+            Coordinate crossPoint = intersection.getCoordinate();
+            if (crossPoint == null) return true;
+
+            Coordinate tangentNew = tangentAt(newNetwork, crossPoint);
+            if (tangentNew == null) return true;
+
+            Coordinate tangentObs = null;
             if (obstacle instanceof LineString) {
-                return calculateAngle(newNetwork, (LineString) obstacle) >= minAngle;
+                tangentObs = tangentAt((LineString) obstacle, crossPoint);
+            } else if (obstacle instanceof Polygon) {
+                Geometry boundary = obstacle.getBoundary();
+                if (boundary instanceof LineString) {
+                    tangentObs = tangentAt((LineString) boundary, crossPoint);
+                }
             }
+            if (tangentObs == null) return true;
 
-            // Если препятствие — полигон, берём его границу
-            if (obstacle.getBoundary() instanceof LineString) {
-                return calculateAngle(newNetwork, (LineString) obstacle.getBoundary()) >= minAngle;
-            }
-
-            // По умолчанию — пропускаем
-            return true;
+            double angle = angleBetween(tangentNew, tangentObs);
+            return angle >= minAngle;
 
         } catch (Exception e) {
             log.warn("Ошибка проверки угла: {}", e.getMessage());
@@ -180,31 +149,36 @@ public class ObstacleChecker {
         }
     }
 
-    /**
-     * Вычисляет угол между двумя линиями (в градусах).
-     */
-    private double calculateAngle(LineString line1, LineString line2) {
-        Coordinate[] coords1 = line1.getCoordinates();
-        Coordinate[] coords2 = line2.getCoordinates();
-
-        if (coords1.length < 2 || coords2.length < 2) {
-            return 90.0; // По умолчанию
+    private Coordinate tangentAt(LineString line, Coordinate point) {
+        Coordinate[] coords = line.getCoordinates();
+        for (int i = 0; i < coords.length - 1; i++) {
+            if (isPointOnSegment(point, coords[i], coords[i + 1])) {
+                return new Coordinate(
+                        coords[i + 1].x - coords[i].x,
+                        coords[i + 1].y - coords[i].y);
+            }
         }
+        return null;
+    }
 
-        // Берём первую и последнюю точку каждой линии
-        double dx1 = coords1[coords1.length - 1].x - coords1[0].x;
-        double dy1 = coords1[coords1.length - 1].y - coords1[0].y;
-        double dx2 = coords2[coords2.length - 1].x - coords2[0].x;
-        double dy2 = coords2[coords2.length - 1].y - coords2[0].y;
+    private boolean isPointOnSegment(Coordinate p, Coordinate a, Coordinate b) {
+        double cross = (p.y - a.y) * (b.x - a.x) - (p.x - a.x) * (b.y - a.y);
+        if (Math.abs(cross) > 1e-6) return false;
+        double dot = (p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y);
+        if (dot < 0) return false;
+        double lenSq = (b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y);
+        return dot <= lenSq;
+    }
 
-        double angle1 = Math.atan2(dy1, dx1);
-        double angle2 = Math.atan2(dy2, dx2);
-
-        double diff = Math.abs(Math.toDegrees(angle1 - angle2));
-        // Угол между линиями — от 0 до 90
-        if (diff > 90) {
-            diff = 180 - diff;
-        }
-        return diff;
+    private double angleBetween(Coordinate v1, Coordinate v2) {
+        double dot = v1.x * v2.x + v1.y * v2.y;
+        double len1 = Math.hypot(v1.x, v1.y);
+        double len2 = Math.hypot(v2.x, v2.y);
+        if (len1 == 0 || len2 == 0) return 90.0;
+        double cos = dot / (len1 * len2);
+        cos = Math.max(-1.0, Math.min(1.0, cos));
+        double angle = Math.toDegrees(Math.acos(cos));
+        if (angle > 90) angle = 180 - angle;
+        return angle;
     }
 }
