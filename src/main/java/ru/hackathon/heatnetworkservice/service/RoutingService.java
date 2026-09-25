@@ -31,6 +31,7 @@ public class RoutingService {
         public String oksId;
         public Double oksFlowTph;
         public String endNodeId;
+        /** Всегда false: маршрут заканчивается на точке сети (net_*). */
         public boolean endIsChamber;
         public Coordinate endCoordinateUtm;
         public List<GraphBuilder.Edge> edges;
@@ -73,10 +74,7 @@ public class RoutingService {
                 allNodes, oksPoints, obstacles, existingNetworks, diameter);
     }
 
-    /**
-     * Совместимость: строит граф и сразу ищет маршруты.
-     * Оставлено для тестов и обратной совместимости.
-     */
+    /** Совместимость: строит граф и сразу ищет маршруты. */
     public List<Route> buildRoutes(
             List<GeoObject> oksPoints,
             List<GeoObject> chambers,
@@ -93,9 +91,9 @@ public class RoutingService {
     }
 
     /**
-     * Поиск маршрутов по уже построенному графу.
+     * Поиск маршрутов до точек сети.
      * ТЗ п.2.1: разветвления только в камерах → ОКС запрещены как транзит.
-     * ТЗ п.2.4: решение «существующая камера или новая» принимает TieInService.
+     * ТЗ п.2.4: решение «reuse chamber или new chamber» принимает TieInService.
      */
     public List<Route> findRoutes(
             List<GraphBuilder.Edge> edges,
@@ -111,19 +109,17 @@ public class RoutingService {
         }
 
         Map<String, List<GraphBuilder.Edge>> adjacency = buildAdjacency(edges);
-
         Set<String> oksIds = oksPoints.stream()
                 .map(GeoObject::getId)
                 .collect(Collectors.toSet());
-
         Set<String> networkPointIds = adjacency.keySet().stream()
                 .filter(id -> id.startsWith("net_"))
                 .collect(Collectors.toSet());
 
         List<Route> routes = oksPoints.parallelStream()
                 .map(oks -> {
-                    Route route = findShortestRoute(
-                            oks, networkPointIds, oksIds, adjacency, weightType);
+                    Route route = dijkstra(oks, networkPointIds, oksIds,
+                            adjacency, weightType);
                     if (route == null) {
                         log.warn("Маршрут для ОКС {} не найден", oks.getId());
                     }
@@ -159,16 +155,6 @@ public class RoutingService {
         }
     }
 
-    private Route findShortestRoute(
-            GeoObject oks,
-            Set<String> networkPointIds,
-            Set<String> oksIds,
-            Map<String, List<GraphBuilder.Edge>> adjacency,
-            WeightType weightType
-    ) {
-        return dijkstra(oks, networkPointIds, oksIds, adjacency, weightType);
-    }
-
     private Route dijkstra(
             GeoObject oks,
             Set<String> targetIds,
@@ -177,10 +163,7 @@ public class RoutingService {
             WeightType weightType
     ) {
         String startId = oks.getId();
-
-        if (targetIds.isEmpty()) {
-            return null;
-        }
+        if (targetIds.isEmpty()) return null;
 
         Map<String, Double> distances = new HashMap<>();
         Map<String, GraphBuilder.Edge> predecessors = new HashMap<>();
@@ -188,8 +171,7 @@ public class RoutingService {
 
         PriorityQueue<String> queue = new PriorityQueue<>(
                 Comparator.comparingDouble(id ->
-                        distances.getOrDefault(id, Double.MAX_VALUE))
-        );
+                        distances.getOrDefault(id, Double.MAX_VALUE)));
 
         distances.put(startId, 0.0);
         queue.add(startId);
@@ -198,7 +180,6 @@ public class RoutingService {
 
         while (!queue.isEmpty()) {
             String current = queue.poll();
-
             if (visited.contains(current)) continue;
             visited.add(current);
 
@@ -230,9 +211,7 @@ public class RoutingService {
             }
         }
 
-        if (endNode == null) {
-            return null;
-        }
+        if (endNode == null) return null;
 
         List<GraphBuilder.Edge> path = new ArrayList<>();
         String current = endNode;

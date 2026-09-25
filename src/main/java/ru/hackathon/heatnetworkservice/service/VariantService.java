@@ -53,7 +53,6 @@ public class VariantService {
                 .filter(o -> !"oks".equals(o.getRestrictionType()))
                 .collect(Collectors.toList());
 
-        // Граф от веса не зависит — строим один раз и переиспользуем для трёх весов.
         List<GeoObject> allObstacles = new ArrayList<>(otherObstacles);
         allObstacles.addAll(oksRestrictions);
 
@@ -65,12 +64,12 @@ public class VariantService {
                 edges.size(), System.currentTimeMillis() - t0);
 
         List<Variant> variants = new ArrayList<>();
-        variants.add(runVariant(edges, oksPoints, chambers,
-                existingNetworks, RoutingService.WeightType.LENGTH, "vL"));
-        variants.add(runVariant(edges, oksPoints, chambers,
-                existingNetworks, RoutingService.WeightType.COST, "vC"));
-        variants.add(runVariant(edges, oksPoints, chambers,
-                existingNetworks, RoutingService.WeightType.SCORE, "vS"));
+        variants.add(runVariant(edges, oksPoints, chambers, existingNetworks,
+                RoutingService.WeightType.LENGTH, "vL"));
+        variants.add(runVariant(edges, oksPoints, chambers, existingNetworks,
+                RoutingService.WeightType.COST, "vC"));
+        variants.add(runVariant(edges, oksPoints, chambers, existingNetworks,
+                RoutingService.WeightType.SCORE, "vS"));
 
         List<Variant> uniqueVariants = filterUniqueVariants(variants);
         uniqueVariants.sort(Comparator.comparingDouble(v -> v.cost.score));
@@ -98,13 +97,13 @@ public class VariantService {
             RoutingService.WeightType weightType,
             String tempId
     ) {
+        // P1 откатили: сюда больше не передаётся existingNetworks.
         List<RoutingService.Route> routes = routingService.findRoutes(
                 edges, oksPoints, chambers, weightType);
 
         List<FlowCalculationService.CalculatedSegment> segments =
                 flowCalculationService.calculateMergedSegments(routes);
 
-        // ДУ для камер берём из РЕАЛЬНЫХ объединённых сегментов
         Map<String, Integer> oksDiameters = new HashMap<>();
         for (FlowCalculationService.CalculatedSegment seg : segments) {
             if (seg.oksId == null) continue;
