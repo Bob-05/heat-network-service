@@ -12,6 +12,7 @@ import org.locationtech.jts.geom.Point;
 import org.locationtech.jts.geom.Polygon;
 import org.locationtech.jts.index.strtree.STRtree;
 import org.springframework.stereotype.Component;
+import ru.hackathon.heatnetworkservice.config.RoutingConfig;
 import ru.hackathon.heatnetworkservice.model.GeoObject;
 
 import java.util.ArrayList;

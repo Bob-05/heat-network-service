@@ -1,4 +1,4 @@
-package ru.hackathon.heatnetworkservice.geometry;
+package ru.hackathon.heatnetworkservice.config;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;

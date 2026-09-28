@@ -37,20 +37,17 @@ public class TaskController {
             description = "Принимает GeoJSON-файл, запускает обработку в фоне, возвращает taskId")
     public ResponseEntity<Map<String, String>> solve(@RequestParam("file") MultipartFile file) {
         try {
-            // Создаём папку для загрузок, если её нет
             File uploadDir = new File(UPLOAD_DIR);
             if (!uploadDir.exists()) {
                 uploadDir.mkdirs();
             }
 
-            // Сохраняем файл на диск
             String fileName = System.currentTimeMillis() + "_" + file.getOriginalFilename();
             Path filePath = Paths.get(UPLOAD_DIR, fileName);
             Files.write(filePath, file.getBytes());
 
             log.info("Файл сохранён: {}", filePath.toAbsolutePath());
 
-            // Запускаем задачу
             String taskId = taskService.startTask(filePath.toFile());
 
             Map<String, String> response = new HashMap<>();
@@ -91,14 +88,14 @@ public class TaskController {
 
         File file = new File(resultFile);
         if (!file.exists()) {
-            // Пока файла нет — возвращаем заглушку
             return ResponseEntity.notFound().build();
         }
 
         Resource resource = new FileSystemResource(file);
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.getName() + "\"")
-                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + file.getName() + "\"")
+                .contentType(MediaType.parseMediaType("application/geo+json"))
                 .body(resource);
     }
 }

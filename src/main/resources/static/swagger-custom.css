@@ -1,0 +1,143 @@
+/* ===== Кастомная тема Swagger UI ===== */
+:root {
+    --swagger-primary: #1f6feb;
+    --swagger-primary-dark: #0d47a1;
+    --swagger-bg: #f6f8fa;
+    --swagger-border: #d0d7de;
+    --swagger-success: #2da44e;
+    --swagger-danger: #cf222e;
+}
+
+body {
+    background: var(--swagger-bg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                 "Helvetica Neue", Arial, sans-serif;
+}
+
+/* ===== Полное скрытие верхней панели Swagger ===== */
+.swagger-ui .topbar {
+    display: none !important;
+}
+
+/* ===== Скрытие иконок ===== */
+.swagger-ui .opblock-summary-control svg,
+.swagger-ui .opblock-summary .view-line-link svg,
+.swagger-ui .opblock-summary .expand-operation svg,
+.swagger-ui .copy-to-clipboard svg,
+.swagger-ui .copy-to-clipboard,
+.swagger-ui .btn.authorize svg,
+.swagger-ui .info .title small svg,
+.swagger-ui .info .title .version-stamp svg,
+.swagger-ui .topbar-wrapper img,
+.swagger-ui .topbar .download-url-wrapper img {
+    display: none !important;
+}
+
+/* ===== Info block ===== */
+.swagger-ui .info {
+    margin: 30px 0;
+    padding: 24px;
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.swagger-ui .info .title {
+    color: var(--swagger-primary-dark);
+    font-weight: 700;
+}
+
+.swagger-ui .info .title small.version-stamp {
+    background-color: var(--swagger-primary);
+}
+
+.swagger-ui .info .description {
+    color: #444;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+/* ===== Tags ===== */
+.swagger-ui .opblock-tag {
+    font-size: 20px;
+    font-weight: 600;
+    color: #1f2328;
+    border-bottom: 1px solid var(--swagger-border);
+    padding: 12px 10px;
+}
+
+.swagger-ui .opblock-tag:hover {
+    background: rgba(31, 111, 235, 0.04);
+}
+
+/* ===== GET ===== */
+.swagger-ui .opblock.opblock-get {
+    border-color: var(--swagger-primary);
+    background: rgba(31, 111, 235, 0.05);
+}
+.swagger-ui .opblock.opblock-get .opblock-summary-method {
+    background: var(--swagger-primary);
+}
+.swagger-ui .opblock.opblock-get .opblock-summary {
+    border-color: var(--swagger-primary);
+}
+
+/* ===== POST ===== */
+.swagger-ui .opblock.opblock-post {
+    border-color: var(--swagger-success);
+    background: rgba(45, 164, 78, 0.05);
+}
+.swagger-ui .opblock.opblock-post .opblock-summary-method {
+    background: var(--swagger-success);
+}
+.swagger-ui .opblock.opblock-post .opblock-summary {
+    border-color: var(--swagger-success);
+}
+
+/* ===== DELETE ===== */
+.swagger-ui .opblock.opblock-delete {
+    border-color: var(--swagger-danger);
+    background: rgba(207, 34, 46, 0.05);
+}
+.swagger-ui .opblock.opblock-delete .opblock-summary-method {
+    background: var(--swagger-danger);
+}
+.swagger-ui .opblock.opblock-delete .opblock-summary {
+    border-color: var(--swagger-danger);
+}
+
+/* ===== Кнопки ===== */
+.swagger-ui .btn.execute {
+    background-color: var(--swagger-primary);
+    border-color: var(--swagger-primary);
+    color: #fff;
+    font-weight: 600;
+}
+.swagger-ui .btn.execute:hover {
+    background-color: var(--swagger-primary-dark);
+    border-color: var(--swagger-primary-dark);
+}
+.swagger-ui .btn.authorize {
+    color: var(--swagger-primary);
+    border-color: var(--swagger-primary);
+}
+
+/* ===== Модели ===== */
+.swagger-ui section.models {
+    border: 1px solid var(--swagger-border);
+    border-radius: 8px;
+    background: #fff;
+}
+.swagger-ui section.models .model-container {
+    background: var(--swagger-bg);
+}
+
+/* ===== Скроллбар ===== */
+.swagger-ui ::-webkit-scrollbar { width: 8px; height: 8px; }
+.swagger-ui ::-webkit-scrollbar-thumb {
+    background: #c1c8cd;
+    border-radius: 4px;
+}
+.swagger-ui ::-webkit-scrollbar-thumb:hover {
+    background: #8b949e;
+}

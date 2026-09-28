@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Heat Network Service API</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="/docs-ui/swagger-ui.css"/>
+    <link rel="stylesheet" href="/swagger-custom.css"/>
+</head>
+<body>
+<div id="swagger-ui"></div>
+<script src="/docs-ui/swagger-ui-bundle.js"></script>
+<script src="/docs-ui/swagger-ui-standalone-preset.js"></script>
+<script>
+    window.onload = function () {
+        SwaggerUIBundle({
+            url: "/v3/api-docs",
+            dom_id: '#swagger-ui',
+            deepLinking: true,
+            filter: true,
+            docExpansion: 'none',
+            operationsSorter: 'method',
+            tagsSorter: 'alpha',
+            displayRequestDuration: true,
+            tryItOutEnabled: true,
+            presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+            plugins: [SwaggerUIBundle.plugins.DownloadUrl],
+            layout: "StandaloneLayout"
+        });
+    };
+</script>
+</body>
+</html>

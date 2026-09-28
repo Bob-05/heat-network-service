@@ -5,6 +5,10 @@ spring:
   application:
     name: heat-network-service
 
+  web:
+    resources:
+      add-mappings: false
+
   datasource:
     url: jdbc:postgresql://localhost:5432/heat_network
     username: user
@@ -41,6 +45,12 @@ spring:
         core-size: 4
         max-size: 8
         queue-capacity: 100
+
+springdoc:
+  swagger-ui:
+    enabled: false
+  api-docs:
+    path: /v3/api-docs
 
 logging:
   level:
