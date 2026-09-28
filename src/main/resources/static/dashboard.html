@@ -20,13 +20,15 @@
             --danger: #cf222e;
             --danger-light: #fdecee;
             --warning: #bf8700;
-            --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
-            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-            --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.12);
+            --warning-light: #fff8e5;
+            --purple: #8250df;
+            --purple-light: #f3eefe;
+            --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
+            --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+            --shadow-lg: 0 12px 32px rgba(0,0,0,0.12);
             --radius: 12px;
             --radius-sm: 8px;
         }
-
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
@@ -39,361 +41,205 @@
             -webkit-font-smoothing: antialiased;
         }
 
-        /* ================= Header ================= */
+        /* ===== Header ===== */
         header {
             background: linear-gradient(135deg, #1f6feb 0%, #0d47a1 100%);
             color: #fff;
-            padding: 28px 40px;
+            padding: 24px 40px;
             box-shadow: var(--shadow-md);
-            position: sticky;
-            top: 0;
-            z-index: 100;
+            position: sticky; top: 0; z-index: 100;
         }
-
         .header-inner {
-            max-width: 1400px;
-            margin: 0 auto;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 24px;
-            flex-wrap: wrap;
+            max-width: 1400px; margin: 0 auto;
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 24px; flex-wrap: wrap;
         }
-
-        .brand {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-        }
-
+        .brand { display: flex; align-items: center; gap: 16px; }
         .brand-icon {
-            width: 48px;
-            height: 48px;
-            border-radius: 12px;
-            background: rgba(255, 255, 255, 0.15);
-            backdrop-filter: blur(10px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            width: 48px; height: 48px; border-radius: 12px;
+            background: rgba(255,255,255,0.15);
+            display: flex; align-items: center; justify-content: center;
+            border: 1px solid rgba(255,255,255,0.2);
         }
+        .brand-icon svg { width: 26px; height: 26px; stroke: #fff; }
+        .brand h1 { font-size: 20px; font-weight: 700; letter-spacing: 0.2px; margin-bottom: 2px; }
+        .brand p { font-size: 13px; opacity: 0.8; }
 
-        .brand-icon svg {
-            width: 26px;
-            height: 26px;
-            stroke: #fff;
+        /* ===== Вкладки ===== */
+        .tabs {
+            background: #fff;
+            border-bottom: 1px solid var(--border);
+            padding: 0 40px;
+            position: sticky; top: 96px; z-index: 90;
+            box-shadow: var(--shadow-sm);
         }
-
-        .brand h1 {
-            font-size: 20px;
-            font-weight: 700;
-            letter-spacing: 0.2px;
-            margin-bottom: 2px;
+        .tabs-inner {
+            max-width: 1400px; margin: 0 auto;
+            display: flex; gap: 4px;
         }
-
-        .brand p {
-            font-size: 13px;
-            opacity: 0.8;
-        }
-
-        header nav {
-            display: flex;
-            gap: 8px;
-        }
-
-        header nav a {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            color: #fff;
-            text-decoration: none;
-            font-size: 13px;
-            font-weight: 500;
-            padding: 9px 16px;
-            border-radius: 8px;
-            border: 1px solid rgba(255, 255, 255, 0.25);
-            background: rgba(255, 255, 255, 0.05);
+        .tab {
+            padding: 14px 24px;
+            font-size: 14px; font-weight: 600;
+            color: var(--muted);
+            cursor: pointer;
+            border: none; background: none; font-family: inherit;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -1px;
             transition: all 0.15s ease;
-            white-space: nowrap;
+            display: flex; align-items: center; gap: 8px;
         }
-
-        header nav a:hover {
-            background: rgba(255, 255, 255, 0.18);
-            border-color: rgba(255, 255, 255, 0.45);
-            transform: translateY(-1px);
+        .tab:hover { color: var(--primary); }
+        .tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
         }
+        .tab svg { width: 16px; height: 16px; }
 
-        /* ================= Main ================= */
+        /* ===== Main ===== */
         main {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 32px 40px 80px;
+            max-width: 1400px; margin: 0 auto;
+            padding: 28px 40px 80px;
         }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
 
-        /* ================= Toolbar ================= */
+        /* ===== Toolbar ===== */
         .toolbar {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 28px;
-            flex-wrap: wrap;
+            display: flex; align-items: center; gap: 12px;
+            margin-bottom: 28px; flex-wrap: wrap;
             padding: 16px 20px;
             background: var(--card);
             border: 1px solid var(--border);
             border-radius: var(--radius);
             box-shadow: var(--shadow-sm);
         }
-
         .search-box {
-            position: relative;
-            flex: 1;
-            min-width: 220px;
-            max-width: 360px;
+            position: relative; flex: 1;
+            min-width: 220px; max-width: 360px;
         }
-
         .search-box svg {
-            position: absolute;
-            left: 12px;
-            top: 50%;
+            position: absolute; left: 12px; top: 50%;
             transform: translateY(-50%);
-            width: 16px;
-            height: 16px;
-            stroke: var(--muted);
-            pointer-events: none;
+            width: 16px; height: 16px; stroke: var(--muted); pointer-events: none;
         }
-
         .search-box input {
-            width: 100%;
-            padding: 10px 12px 10px 38px;
-            border: 1px solid var(--border);
-            border-radius: var(--radius-sm);
-            font-size: 14px;
-            font-family: inherit;
-            background: #fff;
-            color: var(--text);
+            width: 100%; padding: 10px 12px 10px 38px;
+            border: 1px solid var(--border); border-radius: var(--radius-sm);
+            font-size: 14px; font-family: inherit;
+            background: #fff; color: var(--text);
             transition: border-color 0.15s ease, box-shadow 0.15s ease;
         }
-
         .search-box input:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.12);
+            outline: none; border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(31,111,235,0.12);
         }
-
         .status-indicator {
-            margin-left: auto;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 13px;
-            color: var(--muted);
-            white-space: nowrap;
+            margin-left: auto; display: flex; align-items: center; gap: 8px;
+            font-size: 13px; color: var(--muted); white-space: nowrap;
         }
-
         .dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
+            width: 8px; height: 8px; border-radius: 50%;
             background: var(--success);
             animation: pulse 2s ease-in-out infinite;
         }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
 
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.4; }
-        }
-
-        /* ================= Buttons ================= */
+        /* ===== Кнопки ===== */
         .btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            padding: 10px 18px;
+            display: inline-flex; align-items: center; justify-content: center;
+            gap: 8px; padding: 10px 18px;
             border-radius: var(--radius-sm);
             border: 1px solid var(--border);
-            background: #fff;
-            color: var(--text);
-            font-size: 14px;
-            font-weight: 500;
-            font-family: inherit;
-            cursor: pointer;
-            transition: all 0.15s ease;
-            text-decoration: none;
-            white-space: nowrap;
-            user-select: none;
+            background: #fff; color: var(--text);
+            font-size: 14px; font-weight: 500; font-family: inherit;
+            cursor: pointer; transition: all 0.15s ease;
+            text-decoration: none; white-space: nowrap; user-select: none;
         }
-
-        .btn svg {
-            width: 16px;
-            height: 16px;
-            flex-shrink: 0;
-        }
-
+        .btn svg { width: 16px; height: 16px; flex-shrink: 0; }
         .btn:hover:not(:disabled) {
-            border-color: var(--primary);
-            color: var(--primary);
-            transform: translateY(-1px);
-            box-shadow: var(--shadow-sm);
+            border-color: var(--primary); color: var(--primary);
+            transform: translateY(-1px); box-shadow: var(--shadow-sm);
+        }
+        .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+        .btn-primary {
+            background: var(--primary); color: #fff; border-color: var(--primary);
+        }
+        .btn-primary:hover:not(:disabled) {
+            background: var(--primary-dark); border-color: var(--primary-dark); color: #fff;
+        }
+        .btn-danger { color: var(--danger); border-color: rgba(207,34,46,0.3); }
+        .btn-danger:hover:not(:disabled) {
+            background: var(--danger-light); border-color: var(--danger); color: var(--danger);
+        }
+        .btn-success {
+            background: var(--success); color: #fff; border-color: var(--success);
+        }
+        .btn-success:hover:not(:disabled) {
+            background: #1f7d3a; border-color: #1f7d3a; color: #fff;
         }
 
-        .btn:disabled {
+        /* Кнопка-ссылка «Скачать результат» в заблокированном состоянии */
+        .btn[aria-disabled="true"],
+        .btn[aria-disabled="true"]:hover {
             opacity: 0.45;
             cursor: not-allowed;
-        }
-
-        .btn-primary {
-            background: var(--primary);
-            color: #fff;
-            border-color: var(--primary);
-        }
-
-        .btn-primary:hover:not(:disabled) {
-            background: var(--primary-dark);
-            border-color: var(--primary-dark);
-            color: #fff;
-        }
-
-        .btn-danger {
-            color: var(--danger);
-            border-color: rgba(207, 34, 46, 0.3);
-        }
-
-        .btn-danger:hover:not(:disabled) {
-            background: var(--danger-light);
-            border-color: var(--danger);
-            color: var(--danger);
-        }
-
-        .btn-success {
+            pointer-events: auto;
+            transform: none;
+            box-shadow: none;
+            border-color: var(--success);
             background: var(--success);
             color: #fff;
-            border-color: var(--success);
+            filter: grayscale(0.35);
         }
 
-        .btn-success:hover:not(:disabled) {
-            background: #1f7d3a;
-            border-color: #1f7d3a;
-            color: #fff;
-        }
-
-        /* ================= Selection bar ================= */
+        /* ===== Selection bar ===== */
         .selection-bar {
-            display: none;
-            align-items: center;
-            gap: 16px;
+            display: none; align-items: center; gap: 16px;
             padding: 14px 20px;
             background: linear-gradient(90deg, var(--primary-light) 0%, #f0f7ff 100%);
-            border: 1px solid rgba(31, 111, 235, 0.25);
+            border: 1px solid rgba(31,111,235,0.25);
             border-radius: var(--radius);
             margin-bottom: 20px;
             box-shadow: var(--shadow-sm);
-            animation: slideDown 0.2s ease;
         }
+        .selection-bar.active { display: flex; }
+        .selection-count { font-weight: 600; color: var(--primary-dark); font-size: 14px; }
+        .selection-actions { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
 
-        .selection-bar.active {
-            display: flex;
-        }
-
-        @keyframes slideDown {
-            from { opacity: 0; transform: translateY(-8px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .selection-count {
-            font-weight: 600;
-            color: var(--primary-dark);
-            font-size: 14px;
-        }
-
-        .selection-actions {
-            display: flex;
-            gap: 8px;
-            margin-left: auto;
-            flex-wrap: wrap;
-        }
-
-        /* ================= Section ================= */
-        .section {
-            margin-bottom: 36px;
-        }
-
+        /* ===== Section ===== */
+        .section { margin-bottom: 36px; }
         .section-header {
-            display: flex;
-            align-items: center;
-            gap: 12px;
+            display: flex; align-items: center; gap: 12px;
             margin-bottom: 16px;
         }
-
         .section-header h2 {
-            font-size: 18px;
-            font-weight: 700;
-            color: var(--text);
-            display: flex;
-            align-items: center;
-            gap: 10px;
+            font-size: 18px; font-weight: 700; color: var(--text);
+            display: flex; align-items: center; gap: 10px;
         }
-
         .section-icon {
-            width: 32px;
-            height: 32px;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            width: 32px; height: 32px; border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
         }
-
-        .section-icon.uploads {
-            background: var(--primary-light);
-        }
-
-        .section-icon.uploads svg {
-            stroke: var(--primary);
-        }
-
-        .section-icon.results {
-            background: var(--success-light);
-        }
-
-        .section-icon.results svg {
-            stroke: var(--success);
-        }
-
-        .section-icon svg {
-            width: 18px;
-            height: 18px;
-        }
-
+        .section-icon.uploads { background: var(--primary-light); }
+        .section-icon.uploads svg { stroke: var(--primary); }
+        .section-icon.results { background: var(--success-light); }
+        .section-icon.results svg { stroke: var(--success); }
+        .section-icon svg { width: 18px; height: 18px; }
         .badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 3px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            background: var(--primary-light);
-            color: var(--primary-dark);
+            display: inline-flex; align-items: center;
+            padding: 3px 12px; border-radius: 20px;
+            font-size: 12px; font-weight: 600;
+            background: var(--primary-light); color: var(--primary-dark);
         }
+        .badge-results { background: var(--success-light); color: #1a7f37; }
+        .section-actions { margin-left: auto; display: flex; gap: 8px; }
 
-        .badge-results {
-            background: var(--success-light);
-            color: #1a7f37;
-        }
-
-        .section-actions {
-            margin-left: auto;
-            display: flex;
-            gap: 8px;
-        }
-
-        /* ================= Grid ================= */
+        /* ===== Grid / card ===== */
         .grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
             gap: 16px;
         }
-
-        /* ================= File card ================= */
         .card {
             position: relative;
             background: var(--card);
@@ -402,276 +248,496 @@
             padding: 18px;
             transition: all 0.18s ease;
             box-shadow: var(--shadow-sm);
-            display: flex;
-            flex-direction: column;
-            gap: 14px;
+            display: flex; flex-direction: column; gap: 14px;
             cursor: pointer;
         }
-
         .card:hover {
             border-color: var(--primary);
             box-shadow: var(--shadow-md);
             transform: translateY(-2px);
         }
-
         .card.selected {
             border-color: var(--primary);
             background: linear-gradient(180deg, #fff 0%, var(--primary-light) 100%);
-            box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.12), var(--shadow-md);
+            box-shadow: 0 0 0 3px rgba(31,111,235,0.12), var(--shadow-md);
         }
-
-        .card.results:hover {
-            border-color: var(--success);
-        }
-
+        .card.results:hover { border-color: var(--success); }
         .card.results.selected {
             border-color: var(--success);
             background: linear-gradient(180deg, #fff 0%, var(--success-light) 100%);
-            box-shadow: 0 0 0 3px rgba(45, 164, 78, 0.12), var(--shadow-md);
+            box-shadow: 0 0 0 3px rgba(45,164,78,0.12), var(--shadow-md);
         }
-
-        .card-head {
-            display: flex;
-            align-items: flex-start;
-            gap: 12px;
-        }
-
-        /* Кастомный чекбокс */
+        .card-head { display: flex; align-items: flex-start; gap: 12px; }
         .checkbox {
-            position: relative;
-            flex-shrink: 0;
-            width: 20px;
-            height: 20px;
-            margin-top: 2px;
+            position: relative; flex-shrink: 0; width: 20px; height: 20px; margin-top: 2px;
         }
-
         .checkbox input {
-            position: absolute;
-            opacity: 0;
-            width: 100%;
-            height: 100%;
-            cursor: pointer;
-            z-index: 2;
+            position: absolute; opacity: 0;
+            width: 100%; height: 100%; cursor: pointer; z-index: 2;
         }
-
         .checkbox-box {
-            width: 20px;
-            height: 20px;
-            border: 2px solid var(--border);
-            border-radius: 5px;
+            width: 20px; height: 20px;
+            border: 2px solid var(--border); border-radius: 5px;
             background: #fff;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.15s ease;
-            pointer-events: none;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.15s ease; pointer-events: none;
         }
-
         .checkbox input:checked ~ .checkbox-box {
-            background: var(--primary);
-            border-color: var(--primary);
+            background: var(--primary); border-color: var(--primary);
         }
-
         .card.results .checkbox input:checked ~ .checkbox-box {
-            background: var(--success);
-            border-color: var(--success);
+            background: var(--success); border-color: var(--success);
         }
-
         .checkbox-box svg {
-            width: 14px;
-            height: 14px;
-            stroke: #fff;
-            stroke-width: 3;
-            opacity: 0;
-            transform: scale(0.5);
-            transition: all 0.15s ease;
+            width: 14px; height: 14px; stroke: #fff; stroke-width: 3;
+            opacity: 0; transform: scale(0.5); transition: all 0.15s ease;
         }
-
-        .checkbox input:checked ~ .checkbox-box svg {
-            opacity: 1;
-            transform: scale(1);
-        }
+        .checkbox input:checked ~ .checkbox-box svg { opacity: 1; transform: scale(1); }
 
         .card-icon {
-            flex-shrink: 0;
-            width: 40px;
-            height: 40px;
-            border-radius: 10px;
-            background: var(--primary-light);
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            flex-shrink: 0; width: 40px; height: 40px;
+            border-radius: 10px; background: var(--primary-light);
+            display: flex; align-items: center; justify-content: center;
         }
+        .card.results .card-icon { background: var(--success-light); }
+        .card-icon svg { width: 22px; height: 22px; stroke: var(--primary); }
+        .card.results .card-icon svg { stroke: var(--success); }
 
-        .card.results .card-icon {
-            background: var(--success-light);
-        }
-
-        .card-icon svg {
-            width: 22px;
-            height: 22px;
-            stroke: var(--primary);
-        }
-
-        .card.results .card-icon svg {
-            stroke: var(--success);
-        }
-
-        .card-body {
-            flex: 1;
-            min-width: 0;
-        }
-
+        .card-body { flex: 1; min-width: 0; }
         .card-name {
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--text);
-            word-break: break-all;
-            line-height: 1.4;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
+            font-size: 14px; font-weight: 600; color: var(--text);
+            word-break: break-all; line-height: 1.4;
+            display: -webkit-box; -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical; overflow: hidden;
         }
-
         .card-meta {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            margin-top: 8px;
-            font-size: 12px;
-            color: var(--muted);
+            display: flex; align-items: center; gap: 14px;
+            margin-top: 8px; font-size: 12px; color: var(--muted);
             flex-wrap: wrap;
         }
-
-        .meta-item {
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-        }
-
-        .meta-item svg {
-            width: 13px;
-            height: 13px;
-            stroke: var(--muted);
-            opacity: 0.8;
-        }
+        .meta-item { display: inline-flex; align-items: center; gap: 5px; }
+        .meta-item svg { width: 13px; height: 13px; stroke: var(--muted); opacity: 0.8; }
 
         .card-actions {
-            display: flex;
-            gap: 8px;
-            padding-top: 12px;
-            border-top: 1px solid var(--border);
+            display: flex; gap: 8px;
+            padding-top: 12px; border-top: 1px solid var(--border);
         }
+        .card-actions .btn { flex: 1; padding: 8px 12px; font-size: 13px; }
 
-        .card-actions .btn {
-            flex: 1;
-            padding: 8px 12px;
-            font-size: 13px;
-        }
-
-        /* ================= Empty state ================= */
+        /* ===== Empty / loading ===== */
         .empty {
             grid-column: 1 / -1;
-            padding: 60px 24px;
-            text-align: center;
+            padding: 60px 24px; text-align: center;
             color: var(--muted);
             background: var(--card);
             border: 2px dashed var(--border);
             border-radius: var(--radius);
         }
-
         .empty svg {
-            width: 56px;
-            height: 56px;
-            opacity: 0.3;
-            margin-bottom: 16px;
-            stroke: var(--muted);
+            width: 56px; height: 56px; opacity: 0.3;
+            margin-bottom: 16px; stroke: var(--muted);
         }
+        .empty h3 { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+        .empty p { font-size: 13px; }
 
-        .empty h3 {
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--text);
-            margin-bottom: 6px;
-        }
-
-        .empty p {
-            font-size: 13px;
-        }
-
-        /* ================= Loading ================= */
         .loading {
             grid-column: 1 / -1;
-            text-align: center;
-            padding: 60px 24px;
-            color: var(--muted);
-            font-size: 14px;
+            text-align: center; padding: 60px 24px;
+            color: var(--muted); font-size: 14px;
         }
-
         .spinner {
-            display: inline-block;
-            width: 24px;
-            height: 24px;
-            border: 3px solid rgba(31, 111, 235, 0.15);
+            display: inline-block; width: 24px; height: 24px;
+            border: 3px solid rgba(31,111,235,0.15);
             border-top-color: var(--primary);
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
             margin-bottom: 12px;
         }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        /* ================= Toast ================= */
+        /* ===== Toast ===== */
         .toast {
-            position: fixed;
-            bottom: 32px;
-            right: 32px;
-            background: var(--text);
-            color: #fff;
-            padding: 14px 22px;
-            border-radius: var(--radius-sm);
-            font-size: 14px;
-            font-weight: 500;
+            position: fixed; bottom: 32px; right: 32px;
+            background: var(--text); color: #fff;
+            padding: 14px 22px; border-radius: var(--radius-sm);
+            font-size: 14px; font-weight: 500;
             box-shadow: var(--shadow-lg);
-            opacity: 0;
-            transform: translateY(16px) scale(0.95);
-            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-            pointer-events: none;
-            z-index: 1000;
+            opacity: 0; transform: translateY(16px) scale(0.95);
+            transition: all 0.25s cubic-bezier(0.4,0,0.2,1);
+            pointer-events: none; z-index: 1000;
             max-width: 400px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
+            display: flex; align-items: center; gap: 10px;
         }
-
-        .toast.show {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-        }
-
-        .toast svg {
-            width: 18px;
-            height: 18px;
-            flex-shrink: 0;
-        }
-
+        .toast.show { opacity: 1; transform: translateY(0) scale(1); }
+        .toast svg { width: 18px; height: 18px; flex-shrink: 0; }
         .toast.success { background: var(--success); }
         .toast.error { background: var(--danger); }
 
-        /* ================= Responsive ================= */
-        @media (max-width: 768px) {
+        /* ===== ПАНЕЛЬ SOLVE ===== */
+        .solve-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+        @media (max-width: 980px) { .solve-grid { grid-template-columns: 1fr; } }
+
+        .solve-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 28px;
+            box-shadow: var(--shadow-sm);
+        }
+        .solve-card h2 {
+            font-size: 18px; font-weight: 700;
+            display: flex; align-items: center; gap: 10px;
+            margin-bottom: 6px;
+        }
+        .solve-card .subtitle {
+            font-size: 13.5px; color: var(--muted);
+            margin-bottom: 20px;
+        }
+
+        .dropzone {
+            border: 2px dashed var(--border);
+            border-radius: var(--radius);
+            padding: 44px 24px;
+            text-align: center;
+            transition: all 0.15s ease;
+            background: var(--bg);
+            cursor: pointer;
+        }
+        .dropzone:hover, .dropzone.dragging {
+            border-color: var(--primary);
+            background: var(--primary-light);
+        }
+        .dropzone.has-file {
+            border-color: var(--success);
+            background: var(--success-light);
+        }
+        .dropzone svg {
+            width: 48px; height: 48px;
+            stroke: var(--muted);
+            margin-bottom: 12px;
+            transition: stroke 0.15s ease;
+        }
+        .dropzone:hover svg, .dropzone.dragging svg { stroke: var(--primary); }
+        .dropzone.has-file svg { stroke: var(--success); }
+        .dropzone .dz-title {
+            font-size: 15px; font-weight: 600; margin-bottom: 4px;
+        }
+        .dropzone .dz-hint {
+            font-size: 13px; color: var(--muted);
+        }
+        .dropzone .dz-file {
+            display: inline-flex; align-items: center; gap: 10px;
+            background: #fff;
+            padding: 8px 14px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            font-size: 13.5px; font-weight: 600;
+            margin-top: 10px;
+        }
+        .dropzone .dz-file .remove {
+            color: var(--danger);
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 16px;
+            line-height: 1;
+            padding: 0 4px;
+        }
+
+        .task-progress {
+            margin-top: 20px;
+        }
+        .progress-bar {
+            height: 6px;
+            background: #eef1f4;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 14px;
+        }
+        .progress-bar .fill {
+            height: 100%;
+            background: var(--primary);
+            width: 0%;
+            transition: width 0.4s ease;
+            border-radius: 3px;
+        }
+        .progress-bar.done .fill { background: var(--success); }
+        .progress-bar.error .fill { background: var(--danger); }
+
+        .status-row {
+            display: flex; align-items: center; gap: 12px;
+            padding: 12px 16px;
+            background: var(--bg);
+            border-radius: var(--radius-sm);
+            font-size: 13.5px;
+            margin-bottom: 10px;
+        }
+        .status-row .dot2 {
+            width: 10px; height: 10px; border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .status-row .dot2.processing {
+            background: var(--primary);
+            animation: pulse 1.2s ease-in-out infinite;
+        }
+        .status-row .dot2.done { background: var(--success); }
+        .status-row .dot2.error { background: var(--danger); }
+        .status-row .label {
+            font-weight: 600; color: var(--muted);
+            font-size: 12px; text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .status-row .value {
+            margin-left: auto;
+            font-family: ui-monospace, monospace;
+            font-weight: 600;
+            color: var(--text);
+            word-break: break-all;
+            text-align: right;
+        }
+
+        /* ===== API Docs ===== */
+        .docs-layout {
+            display: grid;
+            grid-template-columns: 240px 1fr;
+            gap: 32px;
+            align-items: start;
+        }
+        @media (max-width: 860px) { .docs-layout { grid-template-columns: 1fr; } }
+
+        .docs-sidebar {
+            position: sticky; top: 160px;
+            max-height: calc(100vh - 180px);
+            overflow-y: auto;
+        }
+        .docs-sidebar .sidebar-title {
+            font-size: 11px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.5px;
+            color: var(--muted); margin-bottom: 12px;
+        }
+        .docs-sidebar nav { display: flex; flex-direction: column; gap: 2px; }
+        .docs-sidebar nav a {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 12px; border-radius: 8px;
+            color: var(--text); text-decoration: none;
+            font-size: 13.5px; transition: all 0.12s ease;
+            cursor: pointer;
+        }
+        .docs-sidebar nav a:hover {
+            background: var(--primary-light); color: var(--primary-dark);
+        }
+        .docs-sidebar nav a.active {
+            background: var(--primary-light); color: var(--primary-dark); font-weight: 600;
+        }
+        .docs-sidebar nav a .count {
+            margin-left: auto; font-size: 11px;
+            background: var(--bg); color: var(--muted);
+            padding: 1px 7px; border-radius: 10px; font-weight: 600;
+        }
+
+        .info-banner {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px 28px; margin-bottom: 24px;
+            box-shadow: var(--shadow-sm);
+        }
+        .info-banner h2 {
+            font-size: 22px; font-weight: 700; margin-bottom: 8px;
+            color: var(--primary-dark);
+        }
+        .info-banner .version {
+            display: inline-block;
+            background: var(--primary); color: #fff;
+            font-size: 11px; font-weight: 600;
+            padding: 2px 9px; border-radius: 10px;
+            vertical-align: middle; margin-left: 8px;
+        }
+        .info-banner .desc { color: var(--muted); font-size: 14px; margin-top: 10px; line-height: 1.6; }
+
+        .tag-section { margin-bottom: 32px; }
+        .tag-header {
+            display: flex; align-items: center; gap: 10px;
+            margin-bottom: 14px; padding-bottom: 10px;
+            border-bottom: 1px solid var(--border);
+        }
+        .tag-header h3 { font-size: 17px; font-weight: 700; color: var(--text); }
+        .tag-header .badge {
+            font-size: 11px; font-weight: 600;
+            background: var(--primary-light); color: var(--primary-dark);
+            padding: 2px 9px; border-radius: 10px;
+        }
+
+        .endpoint {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            margin-bottom: 10px; overflow: hidden;
+            box-shadow: var(--shadow-sm);
+            transition: box-shadow 0.15s ease;
+        }
+        .endpoint:hover { box-shadow: var(--shadow-md); }
+        .endpoint-summary {
+            display: flex; align-items: center; gap: 14px;
+            padding: 14px 18px; cursor: pointer; user-select: none;
+            transition: background 0.12s ease;
+        }
+        .endpoint-summary:hover { background: rgba(31,111,235,0.03); }
+        .method {
+            display: inline-flex; align-items: center; justify-content: center;
+            min-width: 68px; padding: 5px 0; border-radius: 6px;
+            font-size: 11.5px; font-weight: 700; color: #fff;
+            letter-spacing: 0.3px; flex-shrink: 0;
+        }
+        .method.get    { background: var(--primary); }
+        .method.post   { background: var(--success); }
+        .method.put    { background: var(--warning); }
+        .method.delete { background: var(--danger); }
+        .method.patch  { background: var(--purple); }
+        .method.head,
+        .method.options { background: var(--muted); }
+        .endpoint-path {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 13.5px; font-weight: 600;
+            color: var(--text); word-break: break-all;
+        }
+        .endpoint-desc {
+            margin-left: auto; font-size: 13px; color: var(--muted);
+            text-align: right; flex: 1; max-width: 45%;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .endpoint-toggle {
+            width: 20px; height: 20px; flex-shrink: 0;
+            stroke: var(--muted); transition: transform 0.2s ease;
+        }
+        .endpoint.open .endpoint-toggle { transform: rotate(180deg); }
+        .endpoint-body {
+            display: none; padding: 0 18px 18px;
+            border-top: 1px solid var(--border);
+        }
+        .endpoint.open .endpoint-body { display: block; }
+
+        .section-label {
+            font-size: 12px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.4px;
+            color: var(--muted); margin: 18px 0 8px;
+        }
+
+        .params-table {
+            width: 100%; border-collapse: collapse; font-size: 13px;
+            background: var(--bg); border-radius: var(--radius-sm); overflow: hidden;
+        }
+        .params-table th {
+            text-align: left; padding: 9px 12px;
+            font-size: 11px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.4px;
+            color: var(--muted); background: #eef1f4;
+            border-bottom: 1px solid var(--border);
+        }
+        .params-table td {
+            padding: 9px 12px;
+            border-bottom: 1px solid var(--border); vertical-align: top;
+        }
+        .params-table tr:last-child td { border-bottom: none; }
+        .params-table code {
+            font-family: ui-monospace, monospace; font-size: 12.5px;
+            color: var(--primary-dark); background: var(--primary-light);
+            padding: 1px 6px; border-radius: 4px;
+        }
+        .params-table .type { color: var(--purple); font-family: ui-monospace, monospace; font-size: 12px; }
+        .params-table .required { color: var(--danger); font-size: 11px; font-weight: 700; }
+        .params-table .opt { color: var(--muted); font-size: 11px; }
+
+        .try-form {
+            display: flex; flex-direction: column; gap: 12px;
+            background: var(--bg); padding: 16px; border-radius: var(--radius-sm);
+        }
+        .field { display: flex; flex-direction: column; gap: 4px; }
+        .field label { font-size: 12px; font-weight: 600; color: var(--muted); }
+        .field label .req { color: var(--danger); margin-left: 3px; }
+        .field input, .field textarea, .field select {
+            padding: 9px 12px; border: 1px solid var(--border);
+            border-radius: var(--radius-sm); font-size: 13.5px;
+            font-family: inherit; background: #fff; color: var(--text);
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .field input:focus, .field textarea:focus, .field select:focus {
+            outline: none; border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(31,111,235,0.12);
+        }
+        .field textarea {
+            font-family: ui-monospace, monospace;
+            font-size: 12.5px; min-height: 90px; resize: vertical;
+        }
+        .field input[type=file] {
+            padding: 8px; cursor: pointer;
+            background: #fff; font-size: 13px;
+        }
+
+        .response {
+            margin-top: 14px; border-radius: var(--radius-sm);
+            overflow: hidden; border: 1px solid var(--border); background: var(--card);
+        }
+        .response-head {
+            display: flex; align-items: center; gap: 10px;
+            padding: 10px 14px; background: var(--bg);
+            border-bottom: 1px solid var(--border);
+            font-size: 13px; font-weight: 600;
+        }
+        .response-head .status {
+            font-family: ui-monospace, monospace;
+            padding: 2px 9px; border-radius: 5px;
+            font-size: 12px; color: #fff;
+        }
+        .response-head .status.ok { background: var(--success); }
+        .response-head .status.err { background: var(--danger); }
+        .response pre {
+            margin: 0; padding: 14px 16px;
+            font-family: ui-monospace, monospace;
+            font-size: 12.5px; line-height: 1.55;
+            max-height: 380px; overflow: auto;
+            background: #0d1117; color: #c9d1d9;
+            white-space: pre-wrap; word-break: break-word;
+        }
+
+        .models-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 14px;
+        }
+        .model-card {
+            background: var(--card); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 16px 18px;
+            box-shadow: var(--shadow-sm);
+        }
+        .model-card h4 {
+            font-size: 14.5px; font-weight: 700;
+            color: var(--purple); margin-bottom: 10px;
+            font-family: ui-monospace, monospace;
+        }
+        .model-prop {
+            display: flex; align-items: baseline; gap: 8px;
+            padding: 5px 0; border-bottom: 1px dashed var(--border);
+            font-size: 13px;
+        }
+        .model-prop:last-child { border-bottom: none; }
+        .model-prop .pname { font-family: ui-monospace, monospace; font-weight: 600; color: var(--text); }
+        .model-prop .ptype { font-family: ui-monospace, monospace; font-size: 11.5px; color: var(--purple); }
+        .model-prop .pdesc { margin-left: auto; text-align: right; color: var(--muted); font-size: 12px; }
+
+        /* ===== Responsive ===== */
+        @media (max-width: 860px) {
             header { padding: 20px; }
             main { padding: 20px 16px 60px; }
             .header-inner { flex-direction: column; align-items: flex-start; }
-            header nav { width: 100%; }
-            .toolbar { padding: 14px; }
-            .search-box { max-width: none; }
-            .selection-bar { flex-direction: column; align-items: stretch; }
-            .selection-actions { margin-left: 0; }
+            .tabs { padding: 0 16px; top: 140px; overflow-x: auto; }
+            .tab { padding: 12px 14px; font-size: 13px; }
             .grid { grid-template-columns: 1fr; }
+            .endpoint-desc { display: none; }
         }
     </style>
 </head>
@@ -689,189 +755,353 @@
             </div>
             <div>
                 <h1>Heat Network Service</h1>
-                <p>Управление входными и выходными файлами</p>
+                <p>Обработка, файлы и документация</p>
             </div>
         </div>
-        <nav>
-            <a href="/docs-ui/index.html" target="_blank">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                     style="width:14px;height:14px">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14 2 14 8 20 8"/>
-                </svg>
-                API Docs
-            </a>
-        </nav>
     </div>
 </header>
 
-<main>
-
-    <!-- Toolbar -->
-    <div class="toolbar">
-        <div class="search-box">
-            <svg viewBox="0 0 24 24" fill="none" stroke-width="2"
-                 stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="8"/>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <input type="text" id="searchInput" placeholder="Поиск по имени файла..."
-                   oninput="applyFilter()">
-        </div>
-        <button class="btn btn-primary" onclick="refreshAll()">
+<!-- Вкладки -->
+<div class="tabs">
+    <div class="tabs-inner">
+        <button class="tab active" id="tab-solve" onclick="switchTab('solve')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="23 4 23 10 17 10"/>
-                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                <polygon points="5 3 19 12 5 21 5 3"/>
             </svg>
-            Обновить
+            Обработка
         </button>
-        <div class="status-indicator">
-            <span class="dot"></span>
-            <span id="lastUpdate">обновление...</span>
+        <button class="tab" id="tab-files" onclick="switchTab('files')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+            </svg>
+            Файлы
+        </button>
+        <button class="tab" id="tab-docs" onclick="switchTab('docs')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+            </svg>
+            API Docs
+        </button>
+    </div>
+</div>
+
+<main>
+
+    <!-- ================= Вкладка «Обработка» ================= -->
+    <div class="tab-panel active" id="panel-solve">
+
+        <div class="solve-grid">
+            <!-- Слева: загрузка -->
+            <div class="solve-card">
+                <h2>
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none"
+                         stroke="currentColor" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round"
+                         style="stroke: var(--primary)">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    Загрузить GeoJSON
+                </h2>
+                <p class="subtitle">
+                    Перетащите файл или выберите его вручную. Сервис запустит
+                    обработку и вернёт результат в разделе «Файлы».
+                </p>
+
+                <div class="dropzone" id="dropzone">
+                    <input type="file" id="fileInput" accept=".geojson,.json"
+                           style="display:none">
+                    <svg viewBox="0 0 24 24" fill="none"
+                         stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    <div class="dz-title" id="dzTitle">
+                        Перетащите файл сюда
+                    </div>
+                    <div class="dz-hint" id="dzHint">
+                        или нажмите, чтобы выбрать .geojson
+                    </div>
+                </div>
+
+                <div style="display:flex;gap:8px;margin-top:18px">
+                    <button class="btn btn-primary" id="uploadBtn"
+                            style="flex:1" disabled onclick="startSolve()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="5 3 19 12 5 21 5 3"/>
+                        </svg>
+                        Запустить обработку
+                    </button>
+                    <button class="btn" id="resetBtn" onclick="resetSolve()">
+                        Сбросить
+                    </button>
+                </div>
+            </div>
+
+            <!-- Справа: статус -->
+            <div class="solve-card">
+                <h2>
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none"
+                         stroke="currentColor" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round"
+                         style="stroke: var(--primary)">
+                        <circle cx="12" cy="12" r="10"/>
+                        <polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                    Статус задачи
+                </h2>
+                <p class="subtitle">
+                    Информация обновляется автоматически.
+                </p>
+
+                <div class="task-progress" id="taskProgress" style="display:none">
+                    <div class="progress-bar" id="progressBar">
+                        <div class="fill" id="progressFill"></div>
+                    </div>
+
+                    <div class="status-row">
+                        <span class="dot2 processing" id="statusDot"></span>
+                        <span class="label">Статус</span>
+                        <span class="value" id="statusValue">—</span>
+                    </div>
+                    <div class="status-row">
+                        <span class="dot2" style="background:transparent"></span>
+                        <span class="label">ID задачи</span>
+                        <span class="value" id="taskIdValue">—</span>
+                    </div>
+                    <div class="status-row">
+                        <span class="dot2" style="background:transparent"></span>
+                        <span class="label">Сообщение</span>
+                        <span class="value" id="messageValue">—</span>
+                    </div>
+
+                    <div style="display:flex;gap:8px;margin-top:16px" id="resultActions">
+                        <a class="btn btn-success" id="downloadResultBtn" style="flex:1"
+                           href="javascript:void(0)" aria-disabled="true" tabindex="-1"
+                           onclick="return onDownloadClick(event)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="7 10 12 15 17 10"/>
+                                <line x1="12" y1="15" x2="12" y2="3"/>
+                            </svg>
+                            <span id="downloadResultLabel">Ожидание результата…</span>
+                        </a>
+                        <a class="btn" href="#files" onclick="switchTab('files')">
+                            К файлам
+                        </a>
+                    </div>
+                </div>
+
+                <div id="taskIdle" class="empty" style="padding:40px 20px">
+                    <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                    <h3>Задача ещё не запущена</h3>
+                    <p>Загрузите файл слева и нажмите «Запустить обработку»</p>
+                </div>
+            </div>
         </div>
+
     </div>
 
-    <!-- Selection bar -->
-    <div class="selection-bar" id="selectionBar">
-        <span class="selection-count" id="selectionCount">Выбрано: 0</span>
-        <div class="selection-actions">
-            <button class="btn btn-success" onclick="downloadSelected()">
+    <!-- ================= Вкладка «Файлы» ================= -->
+    <div class="tab-panel" id="panel-files">
+
+        <div class="toolbar">
+            <div class="search-box">
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"/>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <input type="text" id="searchInput" placeholder="Поиск по имени файла..."
+                       oninput="applyFilter()">
+            </div>
+            <button class="btn btn-primary" onclick="refreshAll()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
                      stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="7 10 12 15 17 10"/>
-                    <line x1="12" y1="15" x2="12" y2="3"/>
+                    <polyline points="23 4 23 10 17 10"/>
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
                 </svg>
-                Скачать выбранные
+                Обновить
             </button>
-            <button class="btn btn-danger" onclick="deleteSelected()">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="3 6 5 6 21 6"/>
-                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                    <path d="M10 11v6M14 11v6"/>
-                </svg>
-                Удалить выбранные
-            </button>
-            <button class="btn" onclick="clearSelection()">
-                Снять выделение
-            </button>
+            <div class="status-indicator">
+                <span class="dot"></span>
+                <span id="lastUpdate">обновление...</span>
+            </div>
         </div>
+
+        <div class="selection-bar" id="selectionBar">
+            <span class="selection-count" id="selectionCount">Выбрано: 0</span>
+            <div class="selection-actions">
+                <button class="btn btn-success" onclick="downloadSelected()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    Скачать выбранные
+                </button>
+                <button class="btn btn-danger" onclick="deleteSelected()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                        <path d="M10 11v6M14 11v6"/>
+                    </svg>
+                    Удалить выбранные
+                </button>
+                <button class="btn" onclick="clearSelection()">Снять выделение</button>
+            </div>
+        </div>
+
+        <section class="section">
+            <div class="section-header">
+                <div class="section-icon uploads">
+                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                </div>
+                <h2>Входные файлы <span class="badge" id="uploadsCount">0</span></h2>
+                <div class="section-actions">
+                    <button class="btn" onclick="selectAll('uploads')">Выбрать все</button>
+                    <button class="btn btn-danger" onclick="clearDir('uploads')">Очистить</button>
+                </div>
+            </div>
+            <div class="grid" id="uploadsGrid">
+                <div class="loading"><div class="spinner"></div><div>Загрузка...</div></div>
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="section-header">
+                <div class="section-icon results">
+                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                        <polyline points="22 4 12 14.01 9 11.01"/>
+                    </svg>
+                </div>
+                <h2>Результаты <span class="badge badge-results" id="resultsCount">0</span></h2>
+                <div class="section-actions">
+                    <button class="btn" onclick="selectAll('results')">Выбрать все</button>
+                    <button class="btn btn-danger" onclick="clearDir('results')">Очистить</button>
+                </div>
+            </div>
+            <div class="grid" id="resultsGrid">
+                <div class="loading"><div class="spinner"></div><div>Загрузка...</div></div>
+            </div>
+        </section>
+
     </div>
 
-    <!-- Uploads -->
-    <section class="section">
-        <div class="section-header">
-            <div class="section-icon uploads">
-                <svg viewBox="0 0 24 24" fill="none" stroke-width="2"
-                     stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="17 8 12 3 7 8"/>
-                    <line x1="12" y1="3" x2="12" y2="15"/>
-                </svg>
-            </div>
-            <h2>
-                Входные файлы
-                <span class="badge" id="uploadsCount">0</span>
-            </h2>
-            <div class="section-actions">
-                <button class="btn" onclick="selectAll('uploads')">
-                    Выбрать все
-                </button>
-                <button class="btn btn-danger" onclick="clearDir('uploads')">
-                    Очистить
-                </button>
+    <!-- ================= Вкладка «API Docs» ================= -->
+    <div class="tab-panel" id="panel-docs">
+        <div class="docs-layout">
+            <aside class="docs-sidebar" id="docsSidebar">
+                <div class="sidebar-title">Разделы</div>
+                <nav id="docsNav">
+                    <div class="loading" style="padding:20px;text-align:left">
+                        <div class="spinner" style="width:16px;height:16px;border-width:2px"></div>
+                    </div>
+                </nav>
+            </aside>
+            <div id="docsContent">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <div>Загрузка спецификации…</div>
+                </div>
             </div>
         </div>
-        <div class="grid" id="uploadsGrid">
-            <div class="loading">
-                <div class="spinner"></div>
-                <div>Загрузка...</div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Results -->
-    <section class="section">
-        <div class="section-header">
-            <div class="section-icon results">
-                <svg viewBox="0 0 24 24" fill="none" stroke-width="2"
-                     stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                    <polyline points="22 4 12 14.01 9 11.01"/>
-                </svg>
-            </div>
-            <h2>
-                Результаты
-                <span class="badge badge-results" id="resultsCount">0</span>
-            </h2>
-            <div class="section-actions">
-                <button class="btn" onclick="selectAll('results')">
-                    Выбрать все
-                </button>
-                <button class="btn btn-danger" onclick="clearDir('results')">
-                    Очистить
-                </button>
-            </div>
-        </div>
-        <div class="grid" id="resultsGrid">
-            <div class="loading">
-                <div class="spinner"></div>
-                <div>Загрузка...</div>
-            </div>
-        </div>
-    </section>
+    </div>
 
 </main>
 
 <div class="toast" id="toast"></div>
 
 <script>
+    /* =====================================================================
+       Переключение вкладок
+       ===================================================================== */
+    function switchTab(name) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+
+        document.getElementById('tab-' + name).classList.add('active');
+        document.getElementById('panel-' + name).classList.add('active');
+
+        history.replaceState(null, null, '#' + name);
+
+        if (name === 'docs' && !window.__docsLoaded) {
+            window.__docsLoaded = true;
+            loadDocs();
+        }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+        const h = window.location.hash.replace('#', '');
+        if (h === 'docs') switchTab('docs');
+        else if (h === 'files') switchTab('files');
+        else switchTab('solve');
+    });
+
+    window.addEventListener('hashchange', () => {
+        const h = window.location.hash.replace('#', '');
+        if (h === 'docs') switchTab('docs');
+        else if (h === 'files') switchTab('files');
+        else if (h === 'solve') switchTab('solve');
+    });
+
+    /* =====================================================================
+       Часть 1. Логика дашборда файлов
+       ===================================================================== */
     const API = '/api/v1/files';
 
-    // Текущее состояние
     let state = {
-        uploads: [],
-        results: [],
-        selected: {
-            uploads: new Set(),
-            results: new Set()
-        }
+        uploads: [], results: [],
+        selected: { uploads: new Set(), results: new Set() }
     };
-
-    // ---------- Утилиты ----------
 
     function formatSize(bytes) {
         if (bytes < 1024) return bytes + ' Б';
-        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' КБ';
-        if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(2) + ' МБ';
-        return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' ГБ';
+        if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' КБ';
+        if (bytes < 1024*1024*1024) return (bytes/1024/1024).toFixed(2) + ' МБ';
+        return (bytes/1024/1024/1024).toFixed(2) + ' ГБ';
     }
-
     function formatDate(ms) {
         const d = new Date(ms);
         const now = new Date();
         const diff = now - d;
         if (diff < 60_000) return 'только что';
-        if (diff < 3_600_000) return Math.floor(diff / 60_000) + ' мин назад';
-        if (diff < 86_400_000) return Math.floor(diff / 3_600_000) + ' ч назад';
+        if (diff < 3_600_000) return Math.floor(diff/60_000) + ' мин назад';
+        if (diff < 86_400_000) return Math.floor(diff/3_600_000) + ' ч назад';
         return d.toLocaleString('ru-RU', {
-            day: '2-digit', month: '2-digit', year: 'numeric',
-            hour: '2-digit', minute: '2-digit'
+            day:'2-digit', month:'2-digit', year:'numeric',
+            hour:'2-digit', minute:'2-digit'
         });
     }
-
     function escapeHtml(s) {
         return String(s).replace(/[&<>"']/g, c => ({
-            '&': '&amp;', '<': '&lt;', '>': '&gt;',
-            '"': '&quot;', "'": '&#39;'
+            '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
         }[c]));
     }
 
     let toastTimer = null;
-    function showToast(msg, type = 'success') {
+    function showToast(msg, type='success') {
         const el = document.getElementById('toast');
         const icon = type === 'error'
             ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'
@@ -882,98 +1112,90 @@
         toastTimer = setTimeout(() => el.className = 'toast ' + type, 3000);
     }
 
-    // ---------- Рендер ----------
-
     function renderEmpty(title, text) {
-        return `
-            <div class="empty">
-                <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"
-                     stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-                </svg>
-                <h3>${escapeHtml(title)}</h3>
-                <p>${escapeHtml(text)}</p>
-            </div>
-        `;
+        return `<div class="empty">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+            </svg>
+            <h3>${escapeHtml(title)}</h3>
+            <p>${escapeHtml(text)}</p>
+        </div>`;
     }
 
     function renderCard(file, type) {
         const isSelected = state.selected[type].has(file.name);
         const typeClass = type === 'results' ? 'results' : '';
-        return `
-            <div class="card ${typeClass} ${isSelected ? 'selected' : ''}"
-                 data-name="${escapeHtml(file.name)}"
-                 onclick="toggleCard('${type}', '${escapeHtml(file.name)}', event)">
-                <div class="card-head">
-                    <label class="checkbox" onclick="event.stopPropagation()">
-                        <input type="checkbox"
-                               ${isSelected ? 'checked' : ''}
-                               onchange="toggleCheckbox('${type}', '${escapeHtml(file.name)}', this.checked)">
-                        <span class="checkbox-box">
-                            <svg viewBox="0 0 24 24" fill="none"
-                                 stroke-linecap="round" stroke-linejoin="round">
-                                <polyline points="20 6 9 17 4 12"/>
-                            </svg>
-                        </span>
-                    </label>
-                    <div class="card-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke-width="2"
+        return `<div class="card ${typeClass} ${isSelected ? 'selected' : ''}"
+                     data-name="${escapeHtml(file.name)}"
+                     onclick="toggleCard('${type}', '${escapeHtml(file.name)}', event)">
+            <div class="card-head">
+                <label class="checkbox" onclick="event.stopPropagation()">
+                    <input type="checkbox" ${isSelected ? 'checked' : ''}
+                           onchange="toggleCheckbox('${type}', '${escapeHtml(file.name)}', this.checked)">
+                    <span class="checkbox-box">
+                        <svg viewBox="0 0 24 24" fill="none"
                              stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                            <polyline points="14 2 14 8 20 8"/>
+                            <polyline points="20 6 9 17 4 12"/>
                         </svg>
-                    </div>
-                    <div class="card-body">
-                        <div class="card-name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>
-                    </div>
-                </div>
-                <div class="card-meta">
-                    <span class="meta-item">
-                        <svg viewBox="0 0 24 24" fill="none" stroke-width="2"
-                             stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                            <polyline points="7 10 12 15 17 10"/>
-                            <line x1="12" y1="15" x2="12" y2="3"/>
-                        </svg>
-                        ${formatSize(file.size)}
                     </span>
-                    <span class="meta-item">
-                        <svg viewBox="0 0 24 24" fill="none" stroke-width="2"
-                             stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="12" cy="12" r="10"/>
-                            <polyline points="12 6 12 12 16 14"/>
-                        </svg>
-                        ${formatDate(file.lastModified)}
-                    </span>
+                </label>
+                <div class="card-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                    </svg>
                 </div>
-                <div class="card-actions" onclick="event.stopPropagation()">
-                    <a class="btn btn-primary" href="${file.downloadUrl}">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                            <polyline points="7 10 12 15 17 10"/>
-                            <line x1="12" y1="15" x2="12" y2="3"/>
-                        </svg>
-                        Скачать
-                    </a>
-                    <button class="btn btn-danger" onclick="deleteFile('${type}', '${escapeHtml(file.name)}')">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="3 6 5 6 21 6"/>
-                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                            <path d="M10 11v6M14 11v6"/>
-                        </svg>
-                        Удалить
-                    </button>
+                <div class="card-body">
+                    <div class="card-name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>
                 </div>
             </div>
-        `;
+            <div class="card-meta">
+                <span class="meta-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    ${formatSize(file.size)}
+                </span>
+                <span class="meta-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                    ${formatDate(file.lastModified)}
+                </span>
+            </div>
+            <div class="card-actions" onclick="event.stopPropagation()">
+                <a class="btn btn-primary" href="${file.downloadUrl}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    Скачать
+                </a>
+                <button class="btn btn-danger" onclick="deleteFile('${type}', '${escapeHtml(file.name)}')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                        <path d="M10 11v6M14 11v6"/>
+                    </svg>
+                    Удалить
+                </button>
+            </div>
+        </div>`;
     }
 
     function getFilter() {
-        return document.getElementById('searchInput').value.trim().toLowerCase();
+        return (document.getElementById('searchInput').value || '').trim().toLowerCase();
     }
-
     function applyFilter() {
         renderSection('uploads', state.uploads);
         renderSection('results', state.results);
@@ -983,7 +1205,6 @@
         const grid = document.getElementById(type + 'Grid');
         const countEl = document.getElementById(type + 'Count');
         const filter = getFilter();
-
         const visible = filter
             ? files.filter(f => f.name.toLowerCase().includes(filter))
             : files;
@@ -994,20 +1215,15 @@
             grid.innerHTML = renderEmpty(
                 type === 'uploads' ? 'Нет входных файлов' : 'Нет результатов',
                 type === 'uploads'
-                    ? 'Загрузите GeoJSON через POST /api/v1/solve'
+                    ? 'Загрузите GeoJSON через вкладку «Обработка»'
                     : 'Результаты появятся после обработки'
             );
             return;
         }
-
         if (visible.length === 0) {
-            grid.innerHTML = renderEmpty(
-                'Ничего не найдено',
-                'Попробуйте изменить поисковый запрос'
-            );
+            grid.innerHTML = renderEmpty('Ничего не найдено', 'Попробуйте изменить запрос');
             return;
         }
-
         grid.innerHTML = visible.map(f => renderCard(f, type)).join('');
     }
 
@@ -1015,7 +1231,6 @@
         const total = state.selected.uploads.size + state.selected.results.size;
         const bar = document.getElementById('selectionBar');
         const count = document.getElementById('selectionCount');
-
         if (total > 0) {
             bar.classList.add('active');
             count.textContent = `Выбрано: ${total} ` +
@@ -1025,10 +1240,7 @@
         }
     }
 
-    // ---------- Выбор ----------
-
     function toggleCard(type, name, event) {
-        // Клик по карточке (не по кнопкам/чекбоксу) — переключаем выбор
         if (event.target.closest('.card-actions') ||
             event.target.closest('.checkbox')) return;
         toggleCheckbox(type, name);
@@ -1037,11 +1249,8 @@
     function toggleCheckbox(type, name, forced) {
         const set = state.selected[type];
         const shouldSelect = forced !== undefined ? forced : !set.has(name);
+        if (shouldSelect) set.add(name); else set.delete(name);
 
-        if (shouldSelect) set.add(name);
-        else set.delete(name);
-
-        // Обновляем визуально карточку
         const card = document.querySelector(
             `#${type}Grid .card[data-name="${cssEscape(name)}"]`);
         if (card) {
@@ -1049,24 +1258,18 @@
             const cb = card.querySelector('input[type=checkbox]');
             if (cb) cb.checked = shouldSelect;
         }
-
         updateSelectionBar();
     }
-
-    function cssEscape(s) {
-        return s.replace(/(["\\])/g, '\\$1');
-    }
+    function cssEscape(s) { return s.replace(/(["\\])/g, '\\$1'); }
 
     function selectAll(type) {
         const filter = getFilter();
         const files = state[type].filter(f =>
             !filter || f.name.toLowerCase().includes(filter));
-
         files.forEach(f => state.selected[type].add(f.name));
         renderSection(type, state[type]);
         updateSelectionBar();
     }
-
     function clearSelection() {
         state.selected.uploads.clear();
         state.selected.results.clear();
@@ -1075,33 +1278,25 @@
         updateSelectionBar();
     }
 
-    // ---------- API ----------
-
     async function refreshAll() {
         try {
             const res = await fetch(API);
             if (!res.ok) throw new Error('HTTP ' + res.status);
             const data = await res.json();
-
             state.uploads = data.uploads || [];
             state.results = data.results || [];
-
-            // Чистим выделение от исчезнувших файлов
             cleanupSelection();
-
             renderSection('uploads', state.uploads);
             renderSection('results', state.results);
             updateSelectionBar();
-
             document.getElementById('lastUpdate').textContent =
                 'обновлено в ' + new Date().toLocaleTimeString('ru-RU');
         } catch (e) {
             showToast('Ошибка загрузки: ' + e.message, 'error');
         }
     }
-
     function cleanupSelection() {
-        ['uploads', 'results'].forEach(type => {
+        ['uploads','results'].forEach(type => {
             const existing = new Set(state[type].map(f => f.name));
             const toRemove = [];
             state.selected[type].forEach(name => {
@@ -1114,12 +1309,11 @@
     async function deleteFile(type, name) {
         if (!confirm(`Удалить файл "${name}"?`)) return;
         try {
-            const res = await fetch(
-                `${API}/${type}/${encodeURIComponent(name)}`,
+            const res = await fetch(`${API}/${type}/${encodeURIComponent(name)}`,
                 { method: 'DELETE' });
             if (!res.ok) throw new Error('HTTP ' + res.status);
             state.selected[type].delete(name);
-            showToast(`Файл "${name}" удалён`, 'success');
+            showToast(`Файл "${name}" удалён`);
             await refreshAll();
         } catch (e) {
             showToast('Ошибка удаления: ' + e.message, 'error');
@@ -1130,9 +1324,8 @@
         const total = state.selected.uploads.size + state.selected.results.size;
         if (total === 0) return;
         if (!confirm(`Удалить выбранные файлы (${total} шт.)?`)) return;
-
         const errors = [];
-        for (const type of ['uploads', 'results']) {
+        for (const type of ['uploads','results']) {
             for (const name of Array.from(state.selected[type])) {
                 try {
                     const res = await fetch(
@@ -1140,17 +1333,11 @@
                         { method: 'DELETE' });
                     if (!res.ok) throw new Error('HTTP ' + res.status);
                     state.selected[type].delete(name);
-                } catch (e) {
-                    errors.push(`${name}: ${e.message}`);
-                }
+                } catch (e) { errors.push(`${name}: ${e.message}`); }
             }
         }
-
-        if (errors.length > 0) {
-            showToast(`Ошибок: ${errors.length}`, 'error');
-        } else {
-            showToast(`Удалено файлов: ${total}`, 'success');
-        }
+        if (errors.length) showToast(`Ошибок: ${errors.length}`, 'error');
+        else showToast(`Удалено файлов: ${total}`);
         await refreshAll();
     }
 
@@ -1164,10 +1351,7 @@
             const f = state.results.find(x => x.name === n);
             if (f) all.push(f);
         });
-
-        if (all.length === 0) return;
-
-        // Последовательно инициируем скачивание с небольшой задержкой
+        if (!all.length) return;
         all.forEach((file, i) => {
             setTimeout(() => {
                 const a = document.createElement('a');
@@ -1178,33 +1362,733 @@
                 document.body.removeChild(a);
             }, i * 200);
         });
-
-        showToast(`Скачивание ${all.length} файлов...`, 'success');
+        showToast(`Скачивание ${all.length} файлов...`);
     }
 
     async function clearDir(type) {
         const count = state[type].length;
-        if (count === 0) {
-            showToast('В этом разделе нет файлов', 'error');
-            return;
-        }
+        if (count === 0) { showToast('В этом разделе нет файлов', 'error'); return; }
         if (!confirm(`Удалить ВСЕ файлы из "${type}" (${count} шт.)?`)) return;
         try {
             const res = await fetch(`${API}/${type}`, { method: 'DELETE' });
             if (!res.ok) throw new Error('HTTP ' + res.status);
             const data = await res.json();
             state.selected[type].clear();
-            showToast(`Удалено файлов: ${data.deleted}`, 'success');
+            showToast(`Удалено файлов: ${data.deleted}`);
             await refreshAll();
         } catch (e) {
             showToast('Ошибка очистки: ' + e.message, 'error');
         }
     }
 
-    // ---------- Автозагрузка ----------
-
     refreshAll();
     setInterval(refreshAll, 10000);
+
+    /* =====================================================================
+       Часть 2. Логика вкладки «Обработка» (solve)
+       ===================================================================== */
+
+    let selectedFile = null;
+    let currentTaskId = null;
+    let pollTimer = null;
+
+    const dz = document.getElementById('dropzone');
+    const fileInput = document.getElementById('fileInput');
+    const uploadBtn = document.getElementById('uploadBtn');
+
+    dz.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', e => {
+        if (e.target.files.length) setFile(e.target.files[0]);
+    });
+
+    ['dragenter','dragover'].forEach(ev =>
+        dz.addEventListener(ev, e => {
+            e.preventDefault();
+            dz.classList.add('dragging');
+        })
+    );
+    ['dragleave','drop'].forEach(ev =>
+        dz.addEventListener(ev, e => {
+            e.preventDefault();
+            dz.classList.remove('dragging');
+        })
+    );
+    dz.addEventListener('drop', e => {
+        if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
+    });
+
+    function setFile(file) {
+        if (!/\.(geojson|json)$/i.test(file.name)) {
+            showToast('Поддерживаются только .geojson / .json', 'error');
+            return;
+        }
+        selectedFile = file;
+        dz.classList.add('has-file');
+        document.getElementById('dzTitle').innerHTML =
+            `<span class="dz-file">
+                ${escapeHtml(file.name)}
+                <span class="remove" onclick="event.stopPropagation();resetSolve()">×</span>
+            </span>`;
+        document.getElementById('dzHint').textContent =
+            (file.size / 1024).toFixed(1) + ' КБ';
+        uploadBtn.disabled = false;
+    }
+
+    function resetSolve() {
+        selectedFile = null;
+        fileInput.value = '';
+        dz.classList.remove('has-file');
+        document.getElementById('dzTitle').textContent = 'Перетащите файл сюда';
+        document.getElementById('dzHint').textContent = 'или нажмите, чтобы выбрать .geojson';
+        uploadBtn.disabled = true;
+
+        currentTaskId = null;
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        document.getElementById('taskProgress').style.display = 'none';
+        document.getElementById('taskIdle').style.display = 'block';
+
+        const btn = document.getElementById('downloadResultBtn');
+        btn.href = 'javascript:void(0)';
+        btn.removeAttribute('download');
+        btn.setAttribute('aria-disabled', 'true');
+        document.getElementById('downloadResultLabel').textContent = 'Ожидание результата…';
+    }
+
+    async function startSolve() {
+        if (!selectedFile) return;
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        document.getElementById('taskIdle').style.display = 'none';
+        document.getElementById('taskProgress').style.display = 'block';
+
+        const btn = document.getElementById('downloadResultBtn');
+        btn.href = 'javascript:void(0)';
+        btn.removeAttribute('download');
+        btn.setAttribute('aria-disabled', 'true');
+        document.getElementById('downloadResultLabel').textContent = 'Ожидание результата…';
+
+        setStatus('processing', 'Загрузка файла…', '—');
+        setProgress(5);
+        uploadBtn.disabled = true;
+
+        try {
+            const fd = new FormData();
+            fd.append('file', selectedFile);
+
+            const res = await fetch('/api/v1/solve', {
+                method: 'POST',
+                body: fd
+            });
+            if (!res.ok) {
+                const t = await res.text();
+                throw new Error('HTTP ' + res.status + ' ' + t);
+            }
+            const data = await res.json();
+            currentTaskId = data.taskId;
+            setStatus('processing', 'Обработка…', currentTaskId);
+            setProgress(20);
+            pollStatus();
+        } catch (e) {
+            setStatus('error', 'Ошибка загрузки', '—', e.message);
+            setProgress(100, false, true);
+            uploadBtn.disabled = false;
+        }
+    }
+
+    function pollStatus() {
+        if (!currentTaskId) return;
+        pollTimer = setInterval(async () => {
+            try {
+                const res = await fetch('/api/v1/status/' + currentTaskId);
+                if (!res.ok) return;
+                const data = await res.json();
+
+                if (data.state === 'PROCESSING') {
+                    setStatus('processing', 'Обработка…',
+                        currentTaskId, data.message);
+                    setProgress(60);
+                } else if (data.state === 'DONE') {
+                    clearInterval(pollTimer); pollTimer = null;
+                    setStatus('done', 'Готово', currentTaskId, data.message);
+                    setProgress(100, true, false);
+                    uploadBtn.disabled = false;
+                    refreshAll();
+                } else if (data.state === 'ERROR') {
+                    clearInterval(pollTimer); pollTimer = null;
+                    setStatus('error', 'Ошибка', currentTaskId, data.message);
+                    setProgress(100, false, true);
+                    uploadBtn.disabled = false;
+                }
+            } catch (e) { /* игнорируем сетевые ошибки при поллинге */ }
+        }, 1500);
+    }
+
+    function setStatus(state, text, taskId, message) {
+        const dot = document.getElementById('statusDot');
+        dot.className = 'dot2 ' + state;
+        document.getElementById('statusValue').textContent = text;
+        if (taskId) document.getElementById('taskIdValue').textContent = taskId;
+        if (message !== undefined) {
+            document.getElementById('messageValue').textContent = message || '—';
+        }
+
+        const btn = document.getElementById('downloadResultBtn');
+        const label = document.getElementById('downloadResultLabel');
+        if (!btn || !label) return;
+
+        if (state === 'done' && taskId) {
+            btn.href = '/api/v1/result/' + taskId;
+            btn.setAttribute('download', 'result_' + taskId + '.geojson');
+            btn.setAttribute('aria-disabled', 'false');
+            label.textContent = 'Скачать результат';
+        } else if (state === 'error') {
+            btn.href = 'javascript:void(0)';
+            btn.removeAttribute('download');
+            btn.setAttribute('aria-disabled', 'true');
+            label.textContent = 'Результат недоступен';
+        } else {
+            btn.href = 'javascript:void(0)';
+            btn.removeAttribute('download');
+            btn.setAttribute('aria-disabled', 'true');
+            label.textContent = 'Ожидание результата…';
+        }
+    }
+
+    function onDownloadClick(e) {
+        const btn = document.getElementById('downloadResultBtn');
+        if (btn.getAttribute('aria-disabled') === 'true') {
+            e.preventDefault();
+            e.stopPropagation();
+            showToast('Результат ещё не готов. Дождитесь завершения обработки.', 'error');
+            return false;
+        }
+        return true;
+    }
+
+    function setProgress(pct, done = false, error = false) {
+        document.getElementById('progressFill').style.width = pct + '%';
+        const bar = document.getElementById('progressBar');
+        bar.classList.toggle('done', done && !error);
+        bar.classList.toggle('error', error);
+    }
+
+    /* =====================================================================
+       Часть 3. Рендерер OpenAPI для вкладки API Docs
+       ===================================================================== */
+
+    const API_DOCS = '/v3/api-docs';
+    let SPEC = null;
+
+    const RU = {
+        method: {
+            get: 'GET', post: 'POST', put: 'PUT',
+            delete: 'DELETE', patch: 'PATCH',
+            head: 'HEAD', options: 'OPTIONS'
+        },
+        fields: {
+            name: 'Имя',
+            in: 'Расположение',
+            type: 'Тип',
+            description: 'Описание',
+            required: 'обязательно',
+            optional: 'необязательно'
+        },
+        sections: {
+            overview: 'Обзор',
+            schemas: 'Схемы',
+            parameters: 'Параметры',
+            requestBody: 'Тело запроса',
+            tryItOut: 'Попробовать',
+            execute: 'Выполнить',
+            clear: 'Очистить'
+        }
+    };
+
+    function slugify(s) {
+        return s.toLowerCase()
+                .replace(/[^a-z0-9а-я]+/gi, '-')
+                .replace(/^-|-$/g, '');
+    }
+
+    function deref(obj) {
+        if (obj && obj.$ref) {
+            const parts = obj.$ref.substring(2).split('/');
+            let node = SPEC;
+            for (const p of parts) {
+                if (!node) return obj;
+                node = node[p];
+            }
+            return node || obj;
+        }
+        return obj;
+    }
+
+    async function loadDocs() {
+        try {
+            const res = await fetch(API_DOCS);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            SPEC = await res.json();
+            renderDocsSidebar();
+            renderDocsContent();
+        } catch (e) {
+            document.getElementById('docsContent').innerHTML =
+                `<div class="empty">
+                    <h3 style="color:var(--danger)">Не удалось загрузить спецификацию</h3>
+                    <p>${escapeHtml(e.message)}</p>
+                    <p style="margin-top:12px;font-size:13px">
+                        Проверьте, что <code>/v3/api-docs</code> доступен.
+                    </p>
+                </div>`;
+        }
+    }
+
+    function collectTags() {
+        const tags = new Map();
+        const paths = SPEC.paths || {};
+        for (const path in paths) {
+            for (const method in paths[path]) {
+                if (!['get','post','put','delete','patch','head','options'].includes(method)) continue;
+                const op = paths[path][method];
+                let opTags = (op.tags && op.tags.length) ? op.tags : ['default'];
+                const mappedTags = opTags.map(t => t === 'Task' ? 'Обработка' : t);
+                for (const t of mappedTags) {
+                    if (!tags.has(t)) tags.set(t, []);
+                    tags.get(t).push({ path, method, op });
+                }
+            }
+        }
+        return [...tags.entries()].sort((a,b) => a[0].localeCompare(b[0]));
+    }
+
+    function renderDocsSidebar() {
+        const nav = document.getElementById('docsNav');
+        const tags = collectTags();
+        let html = `<a href="#docs-top" class="active">${RU.sections.overview}</a>`;
+        for (const [name, endpoints] of tags) {
+            html += `<a href="#tag-${slugify(name)}">
+                ${escapeHtml(name)}
+                <span class="count">${endpoints.length}</span>
+            </a>`;
+        }
+        html += `<a href="#docs-models">${RU.sections.schemas}</a>`;
+        nav.innerHTML = html;
+
+        nav.querySelectorAll('a').forEach(a => {
+            a.addEventListener('click', e => {
+                e.preventDefault();
+                const id = a.getAttribute('href').substring(1);
+                const el = document.getElementById(id);
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                nav.querySelectorAll('a').forEach(x => x.classList.remove('active'));
+                a.classList.add('active');
+            });
+        });
+    }
+
+    function renderDocsContent() {
+        const content = document.getElementById('docsContent');
+        const info = SPEC.info || {};
+        const tags = collectTags();
+
+        let html = `<section id="docs-top" class="info-banner">
+            <h2>${escapeHtml(info.title || 'API')}
+                ${info.version ? `<span class="version">v${escapeHtml(info.version)}</span>` : ''}
+            </h2>
+            ${info.description ? `<div class="desc">${md(info.description)}</div>` : ''}
+        </section>`;
+
+        for (const [tagName, endpoints] of tags) {
+            html += `<section id="tag-${slugify(tagName)}" class="tag-section">
+                <div class="tag-header">
+                    <h3>${escapeHtml(tagName)}</h3>
+                    <span class="badge">${endpoints.length}</span>
+                </div>`;
+            endpoints.sort((a,b) =>
+                a.path.localeCompare(b.path) || a.method.localeCompare(b.method));
+            for (const ep of endpoints) html += renderEndpoint(ep);
+            html += `</section>`;
+        }
+
+        const schemas = (SPEC.components && SPEC.components.schemas) || {};
+        if (Object.keys(schemas).length) {
+            html += `<section id="docs-models" class="tag-section">
+                <div class="tag-header">
+                    <h3>${RU.sections.schemas}</h3>
+                    <span class="badge">${Object.keys(schemas).length}</span>
+                </div>
+                <div class="models-grid">`;
+            for (const [name, schema] of Object.entries(schemas)) {
+                html += renderModel(name, schema);
+            }
+            html += `</div></section>`;
+        }
+
+        content.innerHTML = html;
+
+        content.querySelectorAll('.endpoint-summary').forEach(el => {
+            el.addEventListener('click', () => el.parentElement.classList.toggle('open'));
+        });
+    }
+
+    function renderEndpoint({ path, method, op }) {
+        const opId = 'op-' + slugify(method + '-' + path);
+        const m = method.toLowerCase();
+        const params = (op.parameters || []).map(deref).filter(Boolean);
+        const rb = deref(op.requestBody);
+        const isMultipart = rb && rb.content &&
+            Object.keys(rb.content).some(ct => ct.startsWith('multipart/'));
+
+        let html = `<div class="endpoint" id="${opId}">
+            <div class="endpoint-summary">
+                <span class="method ${m}">${RU.method[m] || m.toUpperCase()}</span>
+                <span class="endpoint-path">${escapeHtml(path)}</span>
+                <span class="endpoint-desc">${escapeHtml(op.summary || '')}</span>
+                <svg class="endpoint-toggle" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"/>
+                </svg>
+            </div>
+            <div class="endpoint-body">`;
+
+        if (op.description) {
+            html += `<div style="color:var(--muted);font-size:13.5px;margin-top:14px">
+                ${md(op.description)}</div>`;
+        }
+
+        if (params.length) {
+            html += `<div class="section-label">${RU.sections.parameters}</div>
+                <table class="params-table"><thead><tr>
+                    <th>${RU.fields.name}</th>
+                    <th>${RU.fields.in}</th>
+                    <th>${RU.fields.type}</th>
+                    <th>${RU.fields.description}</th>
+                </tr></thead><tbody>`;
+            for (const p of params) {
+                const schema = deref(p.schema) || {};
+                html += `<tr>
+                    <td><code>${escapeHtml(p.name)}</code>
+                        ${p.required
+                            ? `<span class="required">${RU.fields.required}</span>`
+                            : `<span class="opt">${RU.fields.optional}</span>`}</td>
+                    <td>${escapeHtml(p.in)}</td>
+                    <td class="type">${escapeHtml(schema.type || '—')}</td>
+                    <td>${escapeHtml(p.description || '')}</td>
+                </tr>`;
+            }
+            html += `</tbody></table>`;
+        }
+
+        if (rb && rb.content) {
+            const ct = Object.keys(rb.content)[0];
+            html += `<div class="section-label">${RU.sections.requestBody}
+                <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">
+                    (${escapeHtml(ct)})</span></div>`;
+            if (isMultipart) {
+                html += renderMultipartSchema(rb.content[ct].schema);
+            } else {
+                html += renderSchemaInline(rb.content[ct].schema);
+            }
+        }
+
+        html += `<div class="section-label">${RU.sections.tryItOut}</div>
+            ${renderTryForm(opId, path, method, params, rb, isMultipart)}
+
+            <div class="response" id="resp-${opId}" style="display:none">
+                <div class="response-head">
+                    <span class="status ok" id="status-${opId}">—</span>
+                    <span id="statusText-${opId}"></span>
+                    <span style="margin-left:auto;color:var(--muted);font-weight:400"
+                          id="time-${opId}"></span>
+                </div>
+                <pre id="body-${opId}"></pre>
+            </div>`;
+
+        html += `</div></div>`;
+        return html;
+    }
+
+    function renderMultipartSchema(schema) {
+        schema = deref(schema);
+        if (!schema || !schema.properties) {
+            return `<div style="padding:10px 12px;font-size:13px;color:var(--muted)">
+                multipart/form-data</div>`;
+        }
+        let html = `<table class="params-table"><thead><tr>
+            <th>${RU.fields.name}</th>
+            <th>${RU.fields.type}</th>
+            <th>${RU.fields.description}</th>
+        </tr></thead><tbody>`;
+        for (const [name, rawProp] of Object.entries(schema.properties)) {
+            const prop = deref(rawProp);
+            const isBinary = prop.type === 'string' && prop.format === 'binary';
+            const typeLabel = isBinary ? 'файл' : (prop.type || '—');
+            html += `<tr>
+                <td><code>${escapeHtml(name)}</code></td>
+                <td class="type">${escapeHtml(typeLabel)}</td>
+                <td>${escapeHtml(prop.description || '')}</td>
+            </tr>`;
+        }
+        html += `</tbody></table>`;
+        return html;
+    }
+
+    function renderTryForm(opId, path, method, params, rb, isMultipart) {
+        let html = `<div class="try-form" id="form-${opId}">`;
+        for (const p of params) {
+            if (p.in !== 'query' && p.in !== 'path' && p.in !== 'header') continue;
+            const schema = deref(p.schema) || {};
+            const type = schema.type || 'string';
+            const inputType = (type === 'number' || type === 'integer') ? 'number' : 'text';
+            html += `<div class="field">
+                <label>${escapeHtml(p.name)} (${p.in})
+                    ${p.required ? '<span class="req">*</span>' : ''}</label>
+                <input type="${inputType}"
+                       data-param="${escapeHtml(p.name)}"
+                       data-in="${p.in}"
+                       placeholder="${escapeHtml(schema.example || p.example || '')}">
+            </div>`;
+        }
+
+        if (isMultipart) {
+            const schema = deref(rb.content[Object.keys(rb.content)[0]].schema) || {};
+            const props = schema.properties || {};
+            for (const [name, rawProp] of Object.entries(props)) {
+                const prop = deref(rawProp);
+                const isBinary = prop.type === 'string' && prop.format === 'binary';
+                if (isBinary) {
+                    html += `<div class="field">
+                        <label>${escapeHtml(name)}
+                            ${prop.description ? `— ${escapeHtml(prop.description)}` : ''}
+                        </label>
+                        <input type="file" data-file="${escapeHtml(name)}"
+                               accept=".geojson,.json,application/json">
+                    </div>`;
+                } else {
+                    html += `<div class="field">
+                        <label>${escapeHtml(name)}</label>
+                        <input type="text" data-form-field="${escapeHtml(name)}"
+                               placeholder="${escapeHtml(prop.description || '')}">
+                    </div>`;
+                }
+            }
+        } else if (rb && rb.content) {
+            const ct = Object.keys(rb.content)[0];
+            const schema = deref(rb.content[ct].schema) || {};
+            const example = schema.example
+                ? JSON.stringify(schema.example, null, 2)
+                : JSON.stringify(buildExample(schema), null, 2);
+            html += `<div class="field">
+                <label>Тело (${escapeHtml(ct)})</label>
+                <textarea data-body>${escapeHtml(example)}</textarea>
+            </div>`;
+        }
+
+        html += `<div style="display:flex;gap:8px;margin-top:4px">
+            <button class="btn btn-primary" onclick="executeOp('${opId}')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="5 3 19 12 5 21 5 3"/>
+                </svg>
+                ${RU.sections.execute}
+            </button>
+            <button class="btn" onclick="clearForm('${opId}')">${RU.sections.clear}</button>
+        </div></div>`;
+        return html;
+    }
+
+    function clearForm(opId) {
+        const form = document.getElementById('form-' + opId);
+        form.querySelectorAll('input, textarea').forEach(el => {
+            if (el.type !== 'file') el.value = '';
+            else el.value = '';
+        });
+        document.getElementById('resp-' + opId).style.display = 'none';
+    }
+
+    function findEndpointByOpId(opId) {
+        const paths = SPEC.paths || {};
+        for (const path in paths) {
+            for (const method in paths[path]) {
+                if (!['get','post','put','delete','patch','head','options'].includes(method)) continue;
+                if (('op-' + slugify(method + '-' + path)) === opId) {
+                    return { path, method };
+                }
+            }
+        }
+        return null;
+    }
+
+    async function executeOp(opId) {
+        const form = document.getElementById('form-' + opId);
+        const ep = findEndpointByOpId(opId);
+        if (!ep) return;
+
+        let url = ep.path;
+        const query = [];
+        const headers = {};
+        let body = null;
+
+        form.querySelectorAll('[data-param]').forEach(input => {
+            const name = input.dataset.param;
+            const where = input.dataset.in;
+            const value = input.value.trim();
+            if (!value) return;
+            if (where === 'path') {
+                url = url.replace('{' + name + '}', encodeURIComponent(value));
+            } else if (where === 'query') {
+                query.push(encodeURIComponent(name) + '=' + encodeURIComponent(value));
+            } else if (where === 'header') {
+                headers[name] = value;
+            }
+        });
+        if (query.length) url += '?' + query.join('&');
+
+        const fileInputs = form.querySelectorAll('[data-file]');
+        const hasFiles = Array.from(fileInputs).some(i => i.files.length);
+
+        if (hasFiles) {
+            const fd = new FormData();
+            fileInputs.forEach(inp => {
+                const name = inp.dataset.file;
+                if (inp.files.length) fd.append(name, inp.files[0]);
+            });
+            form.querySelectorAll('[data-form-field]').forEach(inp => {
+                const name = inp.dataset.formField;
+                if (inp.value) fd.append(name, inp.value);
+            });
+            body = fd;
+        } else {
+            const bodyInput = form.querySelector('[data-body]');
+            if (bodyInput && bodyInput.value.trim()) {
+                try {
+                    JSON.parse(bodyInput.value);
+                    body = bodyInput.value;
+                    headers['Content-Type'] = 'application/json';
+                } catch (e) {
+                    showResponse(opId, 0, 'Ошибка JSON',
+                        'Тело не является валидным JSON: ' + e.message);
+                    return;
+                }
+            }
+        }
+
+        const servers = SPEC.servers || [];
+        const base = servers.length ? servers[0].url : '';
+        const fullUrl = base + url;
+
+        const t0 = performance.now();
+        try {
+            const res = await fetch(fullUrl, {
+                method: ep.method.toUpperCase(),
+                headers, body
+            });
+            const t1 = performance.now();
+            const text = await res.text();
+            showResponse(opId, res.status, res.statusText,
+                         prettify(text), Math.round(t1 - t0));
+        } catch (e) {
+            const t1 = performance.now();
+            showResponse(opId, 0, 'Сетевая ошибка', e.message, Math.round(t1 - t0));
+        }
+    }
+
+    function showResponse(opId, status, statusText, body, time) {
+        const resp = document.getElementById('resp-' + opId);
+        const statusEl = document.getElementById('status-' + opId);
+        const statusTextEl = document.getElementById('statusText-' + opId);
+        const timeEl = document.getElementById('time-' + opId);
+        const bodyEl = document.getElementById('body-' + opId);
+        resp.style.display = 'block';
+        statusEl.textContent = status || 'ERR';
+        statusEl.className = 'status ' + ((status >= 200 && status < 300) ? 'ok' : 'err');
+        statusTextEl.textContent = statusText || '';
+        timeEl.textContent = time != null ? time + ' ms' : '';
+        bodyEl.textContent = body;
+    }
+
+    function prettify(text) {
+        try { return JSON.stringify(JSON.parse(text), null, 2); }
+        catch { return text; }
+    }
+
+    function renderSchemaInline(schema) {
+        schema = deref(schema);
+        if (!schema) return '';
+        if (schema.type === 'array') {
+            return `<div style="padding:10px 12px;font-size:13px">
+                Массив: ${renderSchemaInline(schema.items)}</div>`;
+        }
+        if (schema.type === 'object' || schema.properties) {
+            const props = schema.properties || {};
+            let html = `<table class="params-table"><thead><tr>
+                <th>Поле</th><th>Тип</th><th>Описание</th>
+            </tr></thead><tbody>`;
+            for (const [name, rawProp] of Object.entries(props)) {
+                const prop = deref(rawProp);
+                const type = prop.type || (prop.$ref ? 'ref' : 'object');
+                html += `<tr>
+                    <td><code>${escapeHtml(name)}</code></td>
+                    <td class="type">${escapeHtml(type)}</td>
+                    <td>${escapeHtml(prop.description || '')}</td>
+                </tr>`;
+            }
+            html += `</tbody></table>`;
+            return html;
+        }
+        return `<div style="padding:10px 12px;font-size:13px;color:var(--muted)">
+            ${escapeHtml(schema.type || 'unknown')}</div>`;
+    }
+
+    function renderModel(name, schema) {
+        schema = deref(schema);
+        const props = schema.properties || {};
+        let html = `<div class="model-card"><h4>${escapeHtml(name)}</h4>`;
+        if (schema.description) {
+            html += `<p style="font-size:12.5px;color:var(--muted);margin-bottom:10px">
+                ${escapeHtml(schema.description)}</p>`;
+        }
+        for (const [pname, rawProp] of Object.entries(props)) {
+            const prop = deref(rawProp);
+            html += `<div class="model-prop">
+                <span class="pname">${escapeHtml(pname)}</span>
+                <span class="ptype">${escapeHtml(prop.type || '')}</span>
+                <span class="pdesc">${escapeHtml(prop.description || '')}</span>
+            </div>`;
+        }
+        html += `</div>`;
+        return html;
+    }
+
+    function buildExample(schema, depth = 0) {
+        if (depth > 4) return {};
+        schema = deref(schema);
+        if (!schema) return null;
+        if (schema.example !== undefined) return schema.example;
+        if (schema.default !== undefined) return schema.default;
+        if (schema.type === 'object' || schema.properties) {
+            const obj = {};
+            for (const [k, v] of Object.entries(schema.properties || {})) {
+                obj[k] = buildExample(v, depth + 1);
+            }
+            return obj;
+        }
+        if (schema.type === 'array') return [buildExample(schema.items, depth + 1)];
+        switch (schema.type) {
+            case 'string': return '';
+            case 'integer':
+            case 'number': return 0;
+            case 'boolean': return false;
+            default: return null;
+        }
+    }
+
+    function md(text) {
+        if (!text) return '';
+        return escapeHtml(text)
+            .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+            .replace(/\n/g, '<br>');
+    }
 </script>
 
 </body>
