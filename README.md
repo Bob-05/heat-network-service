@@ -1,14 +1,12 @@
-⚠️ **СТАТУС ПРОЕКТА: В РАЗРАБОТКЕ** ⚠️
-
 # Heat Network Service
 
 Сервис автоматического построения вариантов подключения перспективных объектов капитального строительства (ОКС) к существующей тепловой сети.
 
+**Важно:** реконструкция существующей тепловой сети **не выполняется** (отменена в актуальном ТЗ).
+
 ## 🎯 Назначение
 
 Сервис принимает на вход один GeoJSON-файл с данными о существующей теплосети, камерах, точках подключения ОКС и пространственных ограничениях. На выходе — GeoJSON с готовыми маршрутами новых тепловых сетей, тепловыми камерами, техническими узлами и сводкой по вариантам.
-
-**Важно:** реконструкция существующей тепловой сети **не выполняется** (отменена в актуальном ТЗ).
 
 ## 🛠 Стек технологий
 
@@ -22,6 +20,7 @@
 | **Проекции** | proj4j 1.2.2 + proj4j-epsg 1.2.2 |
 | **Сборка** | Maven |
 | **Документация API** | Springdoc OpenAPI UI 1.7.0 |
+| **Фронтенд** | Vanilla JS + OpenLayers 10.x (для карты) |
 | **Контейнеризация** | Docker + Docker Compose |
 
 ## 🏗 Архитектура проекта
@@ -32,25 +31,27 @@ heat-network-service/
 │   ├── HeatNetworkServiceApplication.java   ← Точка входа Spring Boot
 │   │
 │   ├── controller/                          ← API-слой
-│   │   ├── HelloController.java             ← Тестовый эндпоинт
-│   │   ├── GeoJsonReaderController.java     ← Тестовое чтение
-│   │   ├── TaskController.java              ← POST /solve, GET /status, GET /result
+│   │   ├── FileController.java              ← Управление файлами ✅
+│   │   ├── TaskController.java              ← POST /solve, GET /status, GET /result ✅
 │   │   └── dto/
-│   │       └── TaskStatus.java
+│   │       ├── FileInfo.java                ✅
+│   │       └── TaskStatus.java              ✅
 │   │
 │   ├── service/                             ← Бизнес-логика
-│   │   ├── GeoJsonReaderService.java        ← Потоковое чтение GeoJSON ✅
-│   │   ├── GeoJsonWriterService.java        ← Потоковая запись GeoJSON ✅
+│   │   ├── GeoJsonReaderService.java        ← Чтение GeoJSON ✅
+│   │   ├── GeoJsonWriterService.java        ← Запись GeoJSON ✅
 │   │   ├── TaskService.java                 ← Управление задачами ✅
-│   │   ├── RoutingService.java              ← Построение маршрутов ❌
-│   │   ├── FlowCalculationService.java      ← Расходы и диаметры ❌
-│   │   ├── CostService.java                 ← Расчёт стоимости ❌
-│   │   └── VariantService.java              ← Формирование вариантов ❌
+│   │   ├── RoutingService.java              ← Построение маршрутов ✅
+│   │   ├── FlowCalculationService.java      ← Расходы и диаметры ✅
+│   │   ├── CostService.java                 ← Расчёт стоимости ✅
+│   │   ├── TieInService.java                ← Определение врезок и камер ✅
+│   │   └── VariantService.java              ← Формирование вариантов ✅
 │   │
 │   ├── geometry/                            ← Работа с JTS
 │   │   ├── CoordinateTransformer.java       ← WGS84 → UTM37N ✅
-│   │   ├── ObstacleChecker.java             ← Проверка препятствий ❌
-│   │   └── GraphBuilder.java                ← Построение графа ❌
+│   │   ├── ObstacleChecker.java             ← Проверка препятствий ✅
+│   │   ├── GraphBuilder.java                ← Построение графа ✅
+│   │   └── OksPolygonIndex.java             ← Индекс полигонов ОКС ✅
 │   │
 │   ├── repository/                          ← Spring Data JPA
 │   │   ├── GeoObjectRepository.java         ✅
@@ -65,16 +66,21 @@ heat-network-service/
 │   │   └── Variant.java                     ✅
 │   │
 │   └── config/                              ← Конфигурация
-│       ├── SwaggerConfig.java               ❌
-│       └── JacksonConfig.java               ❌
+│       ├── OpenApiConfig.java               ✅
+│       ├── RoutingConfig.java               ✅
+│       ├── SwaggerUiConfig.java             ✅
+│       └── WebConfig.java                   ✅
 │
 ├── src/main/resources/
 │   ├── application.yml                      ← Настройки приложения ✅
-│   └── test-data/
-│       └── test_input.geojson               ← Тестовый GeoJSON (144 объекта)
+│   └── static/                              ← Статические ресурсы (фронтенд) ✅
+│       ├── dashboard.html                   ← Интерактивный дашборд ✅
+│       ├── swagger-custom.css               ← Кастомные стили Swagger ✅
+│       └── lib/
+│           └── openlayers/
+│               └── ol.js                    ← Библиотека OpenLayers (карта) ✅
 │
 ├── pom.xml                                  ← Зависимости Maven ✅
-├── Dockerfile                               ← Сборка контейнера ❌
 ├── docker-compose.yml                       ← Запуск БД ✅
 ├── README.md                                ← Этот файл ✅
 └── .gitignore                               ← Что не коммитить ✅
@@ -129,10 +135,10 @@ docker ps
 
 **5. Проверьте API:**
 
-- Swagger UI: `http://localhost:8080/swagger-ui.html`
-- Тестовый эндпоинт: `http://localhost:8080/api/v1/hello`
-- Загрузка файла: `POST /api/v1/solve` (multipart/form-data)
-- Тестовое чтение: `POST /api/v1/read-test`
+- **Дашборд:** `http://localhost:8080/dashboard.html`
+- **Swagger UI:** `http://localhost:8080/swagger-ui.html` (или `http://localhost:8080/docs-ui/` в зависимости от конфигурации)
+- **Загрузка файла:** `POST /api/v1/solve` (multipart/form-data)
+- **Тестовый эндпоинт:** `http://localhost:8080/api/v1/hello`
 
 ## 📖 Документация API
 
@@ -149,7 +155,22 @@ http://localhost:8080/swagger-ui.html
 | `POST` | `/api/v1/solve` | Загрузить GeoJSON-файл, запустить обработку |
 | `GET` | `/api/v1/status/{taskId}` | Проверить статус задачи |
 | `GET` | `/api/v1/result/{taskId}` | Скачать результат обработки |
-| `POST` | `/api/v1/read-test` | Прочитать тестовый GeoJSON из resources |
+| `GET` | `/api/v1/files` | Список всех загруженных и результирующих файлов |
+| `GET` | `/api/v1/files/download/{type}/{fileName}` | Скачать файл (type: uploads / results) |
+| `DELETE` | `/api/v1/files/{type}/{fileName}` | Удалить файл |
+| `DELETE` | `/api/v1/files/{type}` | Очистить все файлы в каталоге |
+
+## 🖥 Интерактивный дашборд
+
+Встроенный дашборд (`/dashboard.html`) предоставляет следующие возможности:
+
+- **Обработка** — загрузка GeoJSON-файла и запуск обработки с отслеживанием статуса задачи.
+- **Файлы** — просмотр, скачивание, фильтрация и удаление входных и выходных файлов.
+- **Карта** — визуализация входных данных и результатов на карте (OpenLayers + OSM):
+    - отображение тепловых сетей, ОКС, камер и технических узлов;
+    - раздельная подсветка обычной и специальной прокладки;
+    - всплывающие подсказки со свойствами объектов.
+- **API Docs** — встроенный рендерер OpenAPI-спецификации с возможностью выполнить запрос прямо из браузера.
 
 ## 📐 Ключевые правила ТЗ (актуальная версия)
 
@@ -237,23 +258,23 @@ S = 0,7 · (C / 25 000 000) + 0,3 · (L / 100)
 
 ### Основные правила
 
-1. **Никогда не пушьте напрямую в `master`** — только через Pull Request.
-2. **Создавайте отдельную ветку для каждой задачи:**
+1.  **Никогда не пушьте напрямую в `master`** — только через Pull Request.
+2.  **Создавайте отдельную ветку для каждой задачи:**
 
-   ```bash
-   git checkout master
-   git pull origin master
-   git checkout -b feature/краткое-описание
-   ```
+    ```bash
+    git checkout master
+    git pull origin master
+    git checkout -b feature/краткое-описание
+    ```
 
-3. **Пушьте ветку на GitHub:**
+3.  **Пушьте ветку на GitHub:**
 
-   ```bash
-   git push origin feature/краткое-описание
-   ```
+    ```bash
+    git push origin feature/краткое-описание
+    ```
 
-4. **Создавайте Pull Request** на GitHub: из вашей ветки в `master`.
-5. **После мержа** — удалите ветку.
+4.  **Создавайте Pull Request** на GitHub: из вашей ветки в `master`.
+5.  **После мержа** — удалите ветку.
 
 ### Соглашение об именовании веток
 
@@ -266,11 +287,11 @@ S = 0,7 · (C / 25 000 000) + 0,3 · (L / 100)
 
 ## 🤝 Как внести вклад
 
-1. Создайте ветку от `master`.
-2. Внесите изменения.
-3. Пушьте ветку.
-4. Создайте Pull Request.
-5. Дождитесь ревью от напарника.
+1.  Создайте ветку от `master`.
+2.  Внесите изменения.
+3.  Пушьте ветку.
+4.  Создайте Pull Request.
+5.  Дождитесь ревью от напарника.
 
 ---
 
@@ -299,7 +320,8 @@ S = 0,7 · (C / 25 000 000) + 0,3 · (L / 100)
 - [x] `HelloController` — тестовый эндпоинт
 - [x] `GeoJsonReaderController` — тестовое чтение
 - [x] `TaskController` — `POST /solve`, `GET /status/{taskId}`, `GET /result/{taskId}`
-- [x] DTO для запросов и ответов (`TaskStatus`)
+- [x] `FileController` — управление загруженными и результирующими файлами
+- [x] DTO для запросов и ответов (`TaskStatus`, `FileInfo`)
 - [x] Асинхронная обработка файлов (`@Async`)
 
 **Потоковая обработка**
@@ -309,26 +331,26 @@ S = 0,7 · (C / 25 000 000) + 0,3 · (L / 100)
 
 **Геометрия**
 - [x] `CoordinateTransformer` — WGS84 → UTM37N
+- [x] `ObstacleChecker` — проверка препятствий
+- [x] `GraphBuilder` — построение графа
+- [x] `OksPolygonIndex` — индекс полигонов ОКС
 
-**Тестирование**
-- [x] Тестовый GeoJSON (144 объекта) прочитан успешно
-- [x] Все 144 объекта сохранены в БД
+**Бизнес-логика**
+- [x] `RoutingService` — построение маршрутов
+- [x] `FlowCalculationService` — расходы и диаметры
+- [x] `CostService` — расчёт стоимости
+- [x] `TieInService` — определение врезок и камер
+- [x] `VariantService` — формирование и ранжирование вариантов
+
+**Конфигурация и UI**
+- [x] `OpenApiConfig` — настройка OpenAPI
+- [x] `RoutingConfig` — параметры маршрутизации
+- [x] `SwaggerUiConfig` — группировка API
+- [x] `WebConfig` — редирект на дашборд
+- [x] `dashboard.html` — интерактивный дашборд с картой и документацией
+- [x] `ol.js` (OpenLayers) — библиотека для карты
 
 ### ❌ Что ещё не сделано
-
-**Бизнес-логика (Service)**
-- [ ] `RoutingService` — построение маршрутов
-- [ ] `FlowCalculationService` — расходы и диаметры
-- [ ] `CostService` — расчёт стоимости
-- [ ] `VariantService` — формирование и ранжирование вариантов
-
-**Геометрия (JTS)**
-- [ ] `ObstacleChecker` — проверка препятствий
-- [ ] `GraphBuilder` — построение графа
-
-**Конфигурация**
-- [ ] `SwaggerConfig` — детальная настройка OpenAPI
-- [ ] `JacksonConfig` — настройка сериализации GeoJSON
 
 **Docker**
 - [ ] `Dockerfile` для приложения
@@ -341,8 +363,8 @@ S = 0,7 · (C / 25 000 000) + 0,3 · (L / 100)
 - [ ] Описание границ применения
 
 **Тестирование**
-- [ ] Модульные тесты
-- [ ] Интеграционные тесты
+- [ ] Модульные тесты для ключевых сервисов
+- [ ] Интеграционные тесты полного пайплайна
 
 ---
 
@@ -358,16 +380,15 @@ S = 0,7 · (C / 25 000 000) + 0,3 · (L / 100)
 - [x] Обновление под новое ТЗ (реконструкция отменена)
 
 ### Неделя 2 (22–29 сентября)
-- [ ] `ObstacleChecker`
-- [ ] `GraphBuilder`
-- [ ] `RoutingService`
-- [ ] `FlowCalculationService`
-- [ ] `CostService`
-- [ ] `VariantService`
+- [x] `ObstacleChecker`
+- [x] `GraphBuilder`
+- [x] `RoutingService`
+- [x] `FlowCalculationService`
+- [x] `CostService`
+- [x] `VariantService`
 - [ ] `Dockerfile` + объединение docker-compose
 - [ ] Презентация и документация
-
-**Дедлайн сдачи:** 29 сентября 2026, 23:59 МСК
+- [ ] **Дедлайн сдачи:** 29 сентября 2026, 23:59 МСК
 
 ## 📄 Лицензия
 
