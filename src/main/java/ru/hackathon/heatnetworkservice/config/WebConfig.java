@@ -16,11 +16,9 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        // 1. Ваш кастомный Swagger UI
         registry.addResourceHandler("/docs-ui/**")
                 .addResourceLocations("classpath:/static/docs-ui/");
 
-        // 2. Дашборд и кастомные стили
         registry.addResourceHandler("/dashboard.html")
                 .addResourceLocations("classpath:/static/");
         registry.addResourceHandler("/swagger-custom.css")

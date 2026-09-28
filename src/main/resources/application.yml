@@ -5,9 +5,9 @@ spring:
   application:
     name: heat-network-service
 
-  web:
-    resources:
-      add-mappings: false
+  # ВАЖНО: НЕ ставим spring.web.resources.add-mappings: false —
+  # это ломает всю статику (dashboard.html, swagger-custom.css и т.д.).
+  # Стандартные маппинги Spring Boot должны остаться включёнными.
 
   datasource:
     url: jdbc:postgresql://localhost:5432/heat_network
@@ -47,6 +47,9 @@ spring:
         queue-capacity: 100
 
 springdoc:
+  # Отключаем только автоматический редирект springdoc на встроенный UI.
+  # Сам webjar swagger-ui уже исключён из pom.xml, поэтому
+  # /swagger-ui/** и /webjars/swagger-ui/** никем не обслуживаются.
   swagger-ui:
     enabled: false
   api-docs:

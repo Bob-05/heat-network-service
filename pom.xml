@@ -39,10 +39,22 @@
             <version>1.2.2</version>
         </dependency>
 
+        <!--
+            springdoc-openapi-ui: генерирует /v3/api-docs.
+            Webjar org.webjars:swagger-ui ИСКЛЮЧЁН, чтобы springdoc
+            не регистрировал обработчики для /swagger-ui/** и /webjars/swagger-ui/**,
+            которые перехватывают наш кастомный UI в /docs-ui/**.
+        -->
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-ui</artifactId>
             <version>1.7.0</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.webjars</groupId>
+                    <artifactId>swagger-ui</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <dependency>
