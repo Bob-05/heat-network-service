@@ -2777,20 +2777,25 @@
         });
         nav.innerHTML = navHtml || '<div style="color:var(--muted);font-size:13px;padding:8px">Разделы не найдены</div>';
 
-        // Клик по боковой навигации — плавный скролл, без изменения hash
+        const setActiveAnchor = (id) => {
+            nav.querySelectorAll('a').forEach(x => {
+                x.classList.toggle('active', x.getAttribute('data-md-anchor') === id);
+            });
+        };
+
+        // Клик по боковой навигации — плавный скролл + активный пункт
         nav.querySelectorAll('a').forEach(a => {
             a.addEventListener('click', e => {
                 e.preventDefault();
                 const id = a.getAttribute('data-md-anchor');
                 const el = document.getElementById(id);
                 if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                nav.querySelectorAll('a').forEach(x => x.classList.remove('active'));
-                a.classList.add('active');
+                setActiveAnchor(id);
             });
         });
 
-        // Клик по анкорам внутри самого markdown (оглавление в документе) —
-        // тоже плавный скролл без открытия новой вкладки и без смены URL
+        // Клик по анкорам внутри самого markdown — плавный скролл
+        // + синхронизация активного пункта в боковой навигации
         container.querySelectorAll('a[data-md-anchor-link]').forEach(a => {
             a.addEventListener('click', e => {
                 e.preventDefault();
@@ -2798,11 +2803,57 @@
                 const el = document.getElementById(id);
                 if (el) {
                     el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    setActiveAnchor(id);
                 } else {
                     console.warn('Anchor not found:', id);
                 }
             });
         });
+
+        // Опционально: подсвечивать активный раздел при обычном скролле.
+        // Используем IntersectionObserver — он дешевле, чем scroll-обработчик.
+        if (window.__mdScrollObserver) {
+            window.__mdScrollObserver.disconnect();
+            window.__mdScrollObserver = null;
+        }
+        if ('IntersectionObserver' in window && headings.length > 0) {
+            const visible = new Map(); // id -> ratio
+
+            const observer = new IntersectionObserver((entries) => {
+                for (const entry of entries) {
+                    if (entry.isIntersecting) {
+                        visible.set(entry.target.id, entry.intersectionRatio);
+                    } else {
+                        visible.delete(entry.target.id);
+                    }
+                }
+                // Выбираем тот, что выше всех в документе среди видимых
+                let topMost = null;
+                let topY = Infinity;
+                for (const h of headings) {
+                    if (visible.has(h.id)) {
+                        const rect = h.getBoundingClientRect();
+                        if (rect.top < topY) {
+                            topY = rect.top;
+                            topMost = h.id;
+                        }
+                    }
+                }
+                if (topMost) setActiveAnchor(topMost);
+            }, {
+                // Учитываем высоту двух sticky-панелей (header + tabs)
+                rootMargin: '-160px 0px -60% 0px',
+                threshold: [0, 0.25, 0.5, 0.75, 1]
+            });
+
+            headings.forEach(h => observer.observe(h));
+            window.__mdScrollObserver = observer;
+        }
+
+        // Начальная установка активного пункта — первый раздел
+        if (headings.length > 0) {
+            setActiveAnchor(headings[0].id);
+        }
     }
 
     function slugifyMd(text) {
@@ -3285,9 +3336,42 @@
         setTimeout(() => {
             ensureMap();
             if (!olMap) return;
+
+            // 1) Подгружаем результат по taskId в выходной слой
             loadGeoJsonIntoLayer('/api/v1/result/' + taskId, 'output');
-            document.getElementById('outputFileSelect').value = '';
-            document.getElementById('mapStatus').textContent = 'Загрузка результата…';
+
+            // Синхронизируем выпадающий список «Результат», если
+            // файл result_<taskId>.geojson уже есть в state.results
+            const expectedResultName = 'result_' + taskId + '.geojson';
+            const outSel = document.getElementById('outputFileSelect');
+            const outOpt = Array.from(outSel.options)
+                .find(o => o.value === expectedResultName);
+            if (outOpt) {
+                outSel.value = expectedResultName;
+            } else {
+                outSel.value = '';
+            }
+
+            // 2) Ищем самый свежий входной файл и параллельно грузим его
+            //    во входной слой — так на карте видно и вход, и результат
+            const uploads = (state.uploads || []).slice()
+                .sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0));
+
+            if (uploads.length > 0) {
+                const newestInput = uploads[0];
+                loadGeoJsonIntoLayer(newestInput.downloadUrl, 'input');
+
+                const inSel = document.getElementById('inputFileSelect');
+                const inOpt = Array.from(inSel.options)
+                    .find(o => o.value === newestInput.name);
+                if (inOpt) inSel.value = newestInput.name;
+            } else {
+                clearGeoJsonLayer('input');
+                document.getElementById('inputFileSelect').value = '';
+            }
+
+            document.getElementById('mapStatus').textContent =
+                'Загрузка результата и входных данных…';
         }, 80);
     }
 
