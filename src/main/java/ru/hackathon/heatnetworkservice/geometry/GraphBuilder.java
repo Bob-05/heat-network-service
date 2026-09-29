@@ -11,32 +11,26 @@ import org.locationtech.jts.geom.MultiPolygon;
 import org.locationtech.jts.geom.Point;
 import org.locationtech.jts.geom.Polygon;
 import org.locationtech.jts.index.strtree.STRtree;
+import org.locationtech.jts.linearref.LengthIndexedLine;
 import org.springframework.stereotype.Component;
 import ru.hackathon.heatnetworkservice.config.RoutingConfig;
 import ru.hackathon.heatnetworkservice.model.GeoObject;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class GraphBuilder {
-
-    /** Максимальное расстояние от существующей камеры до точки сети. */
-    private static final double CHAMBER_TO_NETWORK_MAX_M = 50.0;
-
-    /** Смещение углового узла наружу от выпуклой оболочки препятствия (м). */
-    private static final double CORNER_OFFSET_M = 10.0;
-
-    /** Радиус поиска соседних узлов видимости (target+corner). */
-    private static final double CORNER_CORNER_MAX_M = 300.0;
-
-    /** Радиус поиска сетевых точек вокруг углового узла.
-     *  Ограничен 500 м: если угол не дотянулся до сети за 500 м,
-     *  дальнейший поиск даст только шум и замедление. */
-    private static final double CORNER_NETWORK_MAX_M = 500.0;
 
     private final GeometryFactory geometryFactory = new GeometryFactory();
     private final ObstacleChecker obstacleChecker;
@@ -95,12 +89,15 @@ public class GraphBuilder {
         final Geometry geometryUtm;
         final Envelope envelope;
         final boolean forbidden;
+        final boolean special;
 
-        PreparedObstacle(String restrictionType, Geometry geometryUtm, boolean forbidden) {
+        PreparedObstacle(String restrictionType, Geometry geometryUtm,
+                         boolean forbidden, boolean special) {
             this.restrictionType = restrictionType;
             this.geometryUtm = geometryUtm;
             this.envelope = geometryUtm.getEnvelopeInternal();
             this.forbidden = forbidden;
+            this.special = special;
         }
     }
 
@@ -200,7 +197,8 @@ public class GraphBuilder {
             Geometry utmGeom = coordinateTransformer.toUtm37n(obstacle.getGeometry());
             if (utmGeom == null) continue;
             boolean forbidden = obstacleChecker.isForbidden(type);
-            PreparedObstacle po = new PreparedObstacle(type, utmGeom, forbidden);
+            boolean special   = obstacleChecker.isSpecial(type);
+            PreparedObstacle po = new PreparedObstacle(type, utmGeom, forbidden, special);
             preparedObstacles.add(po);
             obstacleSpatialIndex.insert(po.envelope, po);
         }
@@ -215,9 +213,16 @@ public class GraphBuilder {
         networkIndex.build();
 
         double maxEdgeLength = config.getMaxEdgeLength();
+        double chamberToNetworkMax = config.getChamberToNetworkMax();
+        double cornerOffset = config.getCornerOffset();
+        double cornerCornerMax = config.getCornerCornerMax();
+        double cornerNetworkMax = config.getCornerNetworkMax();
 
-        log.info("MAX_EDGE_LENGTH = {} м, CHAMBER_TO_NETWORK_MAX_M = {} м",
-                maxEdgeLength, CHAMBER_TO_NETWORK_MAX_M);
+        // Разделяемые узлы на границах спецпроходов (для повторного использования
+        // между потоками, поскольку parallelStream может вызывать tryBuildEdges
+        // из нескольких потоков).
+        Map<String, Node> splitNodeCache = new ConcurrentHashMap<>();
+        AtomicInteger splitNodeCounter = new AtomicInteger(0);
 
         // 5. Рёбра: целевой ↔ точка сети
         ConcurrentLinkedQueue<Edge> edgesTargetNetwork = new ConcurrentLinkedQueue<>();
@@ -232,9 +237,9 @@ public class GraphBuilder {
             for (Object obj : candidates) {
                 Node to = (Node) obj;
                 if (from.coordinateUtm.distance(to.coordinateUtm) > maxEdgeLength) continue;
-
-                Edge edge = tryBuildEdge(from, to, obstacleSpatialIndex, diameter);
-                if (edge != null) edgesTargetNetwork.add(edge);
+                edgesTargetNetwork.addAll(
+                        tryBuildEdges(from, to, obstacleSpatialIndex, diameter,
+                                splitNodeCache, splitNodeCounter));
             }
         });
         log.info("Рёбер целевой-сеть: {}", edgesTargetNetwork.size());
@@ -246,9 +251,9 @@ public class GraphBuilder {
             for (int j = i + 1; j < targetNodes.size(); j++) {
                 Node to = targetNodes.get(j);
                 if (from.coordinateUtm.distance(to.coordinateUtm) > maxEdgeLength) continue;
-
-                Edge edge = tryBuildEdge(from, to, obstacleSpatialIndex, diameter);
-                if (edge != null) edgesTargetTarget.add(edge);
+                edgesTargetTarget.addAll(
+                        tryBuildEdges(from, to, obstacleSpatialIndex, diameter,
+                                splitNodeCache, splitNodeCounter));
             }
         }
         log.info("Рёбер целевой-целевой: {}", edgesTargetTarget.size());
@@ -257,16 +262,16 @@ public class GraphBuilder {
         ConcurrentLinkedQueue<Edge> edgesChamberNetwork = new ConcurrentLinkedQueue<>();
         for (Node chamber : chamberNodes) {
             Envelope searchEnv = new Envelope(
-                    chamber.coordinateUtm.x - CHAMBER_TO_NETWORK_MAX_M,
-                    chamber.coordinateUtm.x + CHAMBER_TO_NETWORK_MAX_M,
-                    chamber.coordinateUtm.y - CHAMBER_TO_NETWORK_MAX_M,
-                    chamber.coordinateUtm.y + CHAMBER_TO_NETWORK_MAX_M);
+                    chamber.coordinateUtm.x - chamberToNetworkMax,
+                    chamber.coordinateUtm.x + chamberToNetworkMax,
+                    chamber.coordinateUtm.y - chamberToNetworkMax,
+                    chamber.coordinateUtm.y + chamberToNetworkMax);
 
             List<?> candidates = networkIndex.query(searchEnv);
             for (Object obj : candidates) {
                 Node netPoint = (Node) obj;
                 double dist = chamber.coordinateUtm.distance(netPoint.coordinateUtm);
-                if (dist > CHAMBER_TO_NETWORK_MAX_M) continue;
+                if (dist > chamberToNetworkMax) continue;
 
                 LineString line = geometryFactory.createLineString(
                         new Coordinate[]{chamber.coordinateUtm, netPoint.coordinateUtm});
@@ -280,7 +285,7 @@ public class GraphBuilder {
         }
         log.info("Рёбер камера-сеть: {}", edgesChamberNetwork.size());
 
-        // 8. Corner-узлы
+        // 8. Corner-узлы вокруг препятствий
         List<Node> cornerNodes = new ArrayList<>();
         int cornerCounter = 0;
         for (PreparedObstacle po : preparedObstacles) {
@@ -300,8 +305,8 @@ public class GraphBuilder {
                 double dy = c.y - centroid.y;
                 double len = Math.hypot(dx, dy);
                 if (len < 1e-6) continue;
-                double ox = c.x + CORNER_OFFSET_M * dx / len;
-                double oy = c.y + CORNER_OFFSET_M * dy / len;
+                double ox = c.x + cornerOffset * dx / len;
+                double oy = c.y + cornerOffset * dy / len;
                 Coordinate oc = new Coordinate(ox, oy);
                 cornerNodes.add(new Node("tn_" + (cornerCounter++), oc, oc, false, false));
             }
@@ -321,17 +326,18 @@ public class GraphBuilder {
         List<Edge> edgesVisibility = new ArrayList<>();
         for (Node a : visibilityNodes) {
             Envelope env = new Envelope(
-                    a.coordinateUtm.x - CORNER_CORNER_MAX_M,
-                    a.coordinateUtm.x + CORNER_CORNER_MAX_M,
-                    a.coordinateUtm.y - CORNER_CORNER_MAX_M,
-                    a.coordinateUtm.y + CORNER_CORNER_MAX_M);
+                    a.coordinateUtm.x - cornerCornerMax,
+                    a.coordinateUtm.x + cornerCornerMax,
+                    a.coordinateUtm.y - cornerCornerMax,
+                    a.coordinateUtm.y + cornerCornerMax);
             List<?> candidates = visIndex.query(env);
             for (Object obj : candidates) {
                 Node b = (Node) obj;
                 if (a.id.compareTo(b.id) >= 0) continue;
-                if (a.coordinateUtm.distance(b.coordinateUtm) > CORNER_CORNER_MAX_M) continue;
-                Edge e = tryBuildEdge(a, b, obstacleSpatialIndex, diameter);
-                if (e != null) edgesVisibility.add(e);
+                if (a.coordinateUtm.distance(b.coordinateUtm) > cornerCornerMax) continue;
+                edgesVisibility.addAll(
+                        tryBuildEdges(a, b, obstacleSpatialIndex, diameter,
+                                splitNodeCache, splitNodeCounter));
             }
         }
         log.info("[Граф] Рёбер видимости (target+corner): {}", edgesVisibility.size());
@@ -340,16 +346,17 @@ public class GraphBuilder {
         ConcurrentLinkedQueue<Edge> edgesCornerNetwork = new ConcurrentLinkedQueue<>();
         cornerNodes.parallelStream().forEach(corner -> {
             Envelope env = new Envelope(
-                    corner.coordinateUtm.x - CORNER_NETWORK_MAX_M,
-                    corner.coordinateUtm.x + CORNER_NETWORK_MAX_M,
-                    corner.coordinateUtm.y - CORNER_NETWORK_MAX_M,
-                    corner.coordinateUtm.y + CORNER_NETWORK_MAX_M);
+                    corner.coordinateUtm.x - cornerNetworkMax,
+                    corner.coordinateUtm.x + cornerNetworkMax,
+                    corner.coordinateUtm.y - cornerNetworkMax,
+                    corner.coordinateUtm.y + cornerNetworkMax);
             List<?> candidates = networkIndex.query(env);
             for (Object obj : candidates) {
                 Node netPoint = (Node) obj;
-                if (corner.coordinateUtm.distance(netPoint.coordinateUtm) > CORNER_NETWORK_MAX_M) continue;
-                Edge e = tryBuildEdge(corner, netPoint, obstacleSpatialIndex, diameter);
-                if (e != null) edgesCornerNetwork.add(e);
+                if (corner.coordinateUtm.distance(netPoint.coordinateUtm) > cornerNetworkMax) continue;
+                edgesCornerNetwork.addAll(
+                        tryBuildEdges(corner, netPoint, obstacleSpatialIndex, diameter,
+                                splitNodeCache, splitNodeCounter));
             }
         });
         log.info("[Граф] Рёбер угол-сеть: {}", edgesCornerNetwork.size());
@@ -368,26 +375,210 @@ public class GraphBuilder {
         return allEdges;
     }
 
-    private Edge tryBuildEdge(Node from, Node to, STRtree obstacleSpatialIndex, int diameter) {
+    /**
+     * Создаёт одно или несколько рёбер между from и to.
+     * Если ребро пересекает «специальные» ограничения, оно делится
+     * на границах этих ограничений (ТЗ п.8.3). K_спец применяется
+     * только к длине того под-ребра, которое фактически пересекает
+     * данное ограничение.
+     */
+    private List<Edge> tryBuildEdges(Node from, Node to,
+                                     STRtree obstacleSpatialIndex,
+                                     int diameter,
+                                     Map<String, Node> splitNodeCache,
+                                     AtomicInteger splitNodeCounter) {
         LineString line = geometryFactory.createLineString(
                 new Coordinate[]{from.coordinateUtm, to.coordinateUtm});
         line.setSRID(32637);
 
         if (!isValidEdge(line, obstacleSpatialIndex, diameter, from, to)) {
-            return null;
+            return Collections.emptyList();
         }
 
-        double dist = from.coordinateUtm.distance(to.coordinateUtm);
-        double kspec = calculateMaxKspec(line, obstacleSpatialIndex);
-        String layingMethod = (kspec > 1.0) ? "special" : "base";
-        double costPerMeter = getCostPerMeter(diameter);
-        double cost = dist * costPerMeter * kspec;
+        // Разбиваем ребро на границах специальных ограничений
+        List<LineString> parts = splitAtSpecialObstacleBoundaries(line, obstacleSpatialIndex);
 
-        return new Edge(from.id, to.id,
-                from.coordinateUtm, to.coordinateUtm,
-                line, dist, cost, layingMethod, kspec, diameter);
+        List<Edge> result = new ArrayList<>(parts.size());
+        Node currentFrom = from;
+
+        for (int i = 0; i < parts.size(); i++) {
+            LineString part = parts.get(i);
+            Coordinate[] partCoords = part.getCoordinates();
+            if (partCoords.length < 2) continue;
+
+            Node currentTo;
+            if (i < parts.size() - 1) {
+                Coordinate splitCoord = partCoords[partCoords.length - 1];
+                String key = Math.round(splitCoord.x * 1000) + "_"
+                        + Math.round(splitCoord.y * 1000);
+                currentTo = splitNodeCache.computeIfAbsent(key, k -> {
+                    String id = "tn_split_" + splitNodeCounter.getAndIncrement();
+                    return new Node(id, splitCoord, splitCoord, false, false);
+                });
+            } else {
+                currentTo = to;
+            }
+
+            double partLength = part.getLength();
+            double kspec = calculateKspecForPart(part, obstacleSpatialIndex);
+            String layingMethod = (kspec > 1.0) ? "special" : "base";
+            double costPerMeter = getCostPerMeter(diameter);
+            double cost = partLength * costPerMeter * kspec;
+
+            result.add(new Edge(
+                    currentFrom.id, currentTo.id,
+                    currentFrom.coordinateUtm, currentTo.coordinateUtm,
+                    part, partLength, cost,
+                    layingMethod, kspec, diameter));
+
+            currentFrom = currentTo;
+        }
+
+        return result;
     }
 
+    /**
+     * Разбивает ребро на под-рёбра в точках пересечения границ
+     * специальных ограничений. Точки берутся из пересечения ребра
+     * с BOUNDARY полигонов и с самими линейными ограничениями.
+     *
+     * ТЗ п.8.3: «На границах специального прохода участок делится.
+     * Если граница не совпадает с тепловой камерой или точкой
+     * подключения ОКС, создаётся технический узел (technical_node)».
+     *
+     * Реализация:
+     *   1. Для каждого специального (не forbidden) ограничения,
+     *      которое реально пересекает ребро, находим точки пересечения
+     *      геометрии ребра с границей ограничения.
+     *   2. Проецируем эти точки на ребро (получаем расстояние от начала
+     *      вдоль ребра) через LengthIndexedLine.project(Coordinate).
+     *   3. Сортируем расстояния и режем ребро на под-сегменты
+     *      через LengthIndexedLine.extractLine(from, to).
+     *
+     * Если точек разбиения нет — возвращаем одно ребро без изменений.
+     */
+    private List<LineString> splitAtSpecialObstacleBoundaries(LineString line,
+                                                              STRtree obstacleSpatialIndex) {
+        double totalLength = line.getLength();
+        if (totalLength < 1e-3) {
+            return Collections.singletonList(line);
+        }
+
+        List<?> obstacles = obstacleSpatialIndex.query(line.getEnvelopeInternal());
+        Set<Double> splitDistances = new HashSet<>();
+        LengthIndexedLine indexedLine = new LengthIndexedLine(line);
+
+        for (Object obj : obstacles) {
+            PreparedObstacle po = (PreparedObstacle) obj;
+
+            // Нас интересуют только специальные (не запрещённые)
+            // ограничения — именно на их границах ставится technical_node.
+            if (po.forbidden || !po.special) continue;
+            if (!line.intersects(po.geometryUtm)) continue;
+
+            // Для полигонов используем только границу — нам нужны точки
+            // входа/выхода, а не весь участок внутри полигона.
+            Geometry ref = po.geometryUtm;
+            if (ref instanceof Polygon || ref instanceof MultiPolygon) {
+                ref = ref.getBoundary();
+            }
+
+            Geometry intersection = line.intersection(ref);
+            if (intersection == null || intersection.isEmpty()) continue;
+
+            for (int i = 0; i < intersection.getNumGeometries(); i++) {
+                Geometry g = intersection.getGeometryN(i);
+                for (Coordinate c : g.getCoordinates()) {
+                    try {
+                        // LengthIndexedLine.project принимает Coordinate,
+                        // а не Point. Возвращает расстояние от начала
+                        // линии вдоль её геометрии.
+                        double d = indexedLine.project(c);
+                        if (d > 1e-3 && d < totalLength - 1e-3) {
+                            // Округляем до мм, чтобы схлопнуть дубликаты,
+                            // которые могут возникнуть из-за перекрывающихся
+                            // ограничений (наложение спецпроходов, ТЗ п.8.3).
+                            splitDistances.add(Math.round(d * 1000.0) / 1000.0);
+                        }
+                    } catch (Exception ignore) {
+                        // Точка вне диапазона ребра — игнорируем.
+                        // Такое может случиться при вырожденных геометриях.
+                    }
+                }
+            }
+        }
+
+        // Нет точек разбиения — возвращаем исходное ребро как есть.
+        if (splitDistances.isEmpty()) {
+            return Collections.singletonList(line);
+        }
+
+        // Сортируем расстояния по возрастанию вдоль ребра.
+        List<Double> sorted = new ArrayList<>(splitDistances);
+        Collections.sort(sorted);
+
+        // Режем ребро на под-сегменты между последовательными точками.
+        List<LineString> result = new ArrayList<>();
+        double prevD = 0.0;
+        for (double d : sorted) {
+            if (d - prevD < 1e-3) continue; // защита от очень близких точек
+            Geometry piece = indexedLine.extractLine(prevD, d);
+            if (piece instanceof LineString
+                    && piece.getNumPoints() >= 2
+                    && piece.getLength() > 1e-3) {
+                result.add((LineString) piece);
+            }
+            prevD = d;
+        }
+
+        // Финальный кусок — от последней точки до конца ребра.
+        if (totalLength - prevD > 1e-3) {
+            Geometry piece = indexedLine.extractLine(prevD, totalLength);
+            if (piece instanceof LineString
+                    && piece.getNumPoints() >= 2
+                    && piece.getLength() > 1e-3) {
+                result.add((LineString) piece);
+            }
+        }
+
+        // Страховка: если по какой-то причине не получилось ни одного
+        // под-сегмента — возвращаем исходное ребро.
+        if (result.isEmpty()) {
+            return Collections.singletonList(line);
+        }
+        return result;
+    }
+
+    /**
+     * Считает K_спец для под-ребра. Если под-ребро лежит внутри
+     * нескольких специальных ограничений (ТЗ п.8.3 — «наложение»),
+     * берётся МАКСИМУМ соответствующих коэффициентов.
+     * Коэффициенты не суммируются и не перемножаются.
+     */
+    private double calculateKspecForPart(LineString part, STRtree obstacleSpatialIndex) {
+        double maxKspec = 1.0;
+        List<?> closeObstacles = obstacleSpatialIndex.query(part.getEnvelopeInternal());
+
+        for (Object obj : closeObstacles) {
+            PreparedObstacle po = (PreparedObstacle) obj;
+            if (po.forbidden || !po.special) continue;
+
+            // Проверяем ФАКТИЧЕСКОЕ пересечение с ненулевой длиной:
+            // касание границы концом ребра — не специальный проход.
+            Geometry inter = part.intersection(po.geometryUtm);
+            if (inter == null || inter.isEmpty()) continue;
+            if (inter.getDimension() < 1 && inter.getLength() < 1e-3) continue;
+
+            double kspec = obstacleChecker.getKspec(po.restrictionType);
+            if (kspec > maxKspec) maxKspec = kspec;
+        }
+        return maxKspec;
+    }
+
+    /**
+     * Полная проверка ребра на допустимость по всем препятствиям.
+     * Не применяет K_спец — только валидация.
+     */
     private boolean isValidEdge(LineString line, STRtree obstacleSpatialIndex,
                                 int diameter, Node from, Node to) {
         List<?> closeObstacles = obstacleSpatialIndex.query(line.getEnvelopeInternal());
@@ -435,57 +626,52 @@ public class GraphBuilder {
         return true;
     }
 
+    /**
+     * ТЗ п.2.2 + разъяснение 3: один финальный прямой участок
+     * от ближайшей к точке границы собственного полигона ОКС
+     * до самой точки. Оба конца проверяем с одинаковым допуском 1 м,
+     * поскольку из-за погрешности WGS84→UTM37N точка ОКС может
+     * оказаться ровно на границе.
+     */
     private boolean isAllowedFinalSegmentForOks(Node from, Node to, Geometry oksPolygonUtm) {
         Point fromPoint = geometryFactory.createPoint(from.coordinateUtm);
         Point toPoint = geometryFactory.createPoint(to.coordinateUtm);
 
+        double tol = 1.0;
         boolean fromInside = oksPolygonUtm.contains(fromPoint)
-                || oksPolygonUtm.distance(fromPoint) <= 1.0;
-        boolean toInside = oksPolygonUtm.contains(toPoint);
+                || oksPolygonUtm.distance(fromPoint) <= tol;
+        boolean toInside = oksPolygonUtm.contains(toPoint)
+                || oksPolygonUtm.distance(toPoint) <= tol;
 
+        // Ровно один конец — в полигоне (иначе это либо полностью
+        // внешнее, либо полностью внутреннее ребро).
         if (fromInside == toInside) return false;
 
         String oksId = fromInside ? from.id : to.id;
-
         return oksPolygonIndex.isOwnPolygon(oksId, oksPolygonUtm);
-    }
-
-    private double calculateMaxKspec(LineString line, STRtree obstacleSpatialIndex) {
-        double maxKspec = 1.0;
-        List<?> closeObstacles = obstacleSpatialIndex.query(line.getEnvelopeInternal());
-
-        for (Object obj : closeObstacles) {
-            PreparedObstacle po = (PreparedObstacle) obj;
-            if (po.forbidden) continue;
-            if (line.intersects(po.geometryUtm)) {
-                double kspec = obstacleChecker.getKspec(po.restrictionType);
-                if (kspec > maxKspec) maxKspec = kspec;
-            }
-        }
-        return maxKspec;
     }
 
     private double getCostPerMeter(int diameter) {
         switch (diameter) {
-            case 50: return 74023;
-            case 65: return 78631;
-            case 80: return 83530;
-            case 100: return 89748;
-            case 125: return 97275;
-            case 150: return 105507;
-            case 200: return 120275;
-            case 250: return 135323;
-            case 300: return 150022;
-            case 400: return 190299;
-            case 500: return 224137;
-            case 600: return 264790;
-            case 700: return 324298;
-            case 800: return 325996;
-            case 900: return 327693;
+            case 50:   return 74023;
+            case 65:   return 78631;
+            case 80:   return 83530;
+            case 100:  return 89748;
+            case 125:  return 97275;
+            case 150:  return 105507;
+            case 200:  return 120275;
+            case 250:  return 135323;
+            case 300:  return 150022;
+            case 400:  return 190299;
+            case 500:  return 224137;
+            case 600:  return 264790;
+            case 700:  return 324298;
+            case 800:  return 325996;
+            case 900:  return 327693;
             case 1000: return 418777;
             case 1200: return 428074;
             case 1400: return 683417;
-            default: return 150022;
+            default:   return 150022;
         }
     }
 }

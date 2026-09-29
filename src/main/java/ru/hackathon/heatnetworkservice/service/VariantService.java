@@ -6,13 +6,7 @@ import org.springframework.stereotype.Service;
 import ru.hackathon.heatnetworkservice.geometry.GraphBuilder;
 import ru.hackathon.heatnetworkservice.model.GeoObject;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -97,7 +91,6 @@ public class VariantService {
             RoutingService.WeightType weightType,
             String tempId
     ) {
-        // P1 откатили: сюда больше не передаётся existingNetworks.
         List<RoutingService.Route> routes = routingService.findRoutes(
                 edges, oksPoints, chambers, weightType);
 

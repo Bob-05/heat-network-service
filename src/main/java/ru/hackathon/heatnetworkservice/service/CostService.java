@@ -51,7 +51,7 @@ public class CostService {
 
         CostResult result = new CostResult();
 
-        // 1. Стоимость участков (дедупликация уже сделана в FlowCalculationService)
+        // 1. Стоимость участков (дедупликация уже сделана в FlowCalculationService).
         double segmentsCost = 0;
         double totalLength = 0;
         for (FlowCalculationService.CalculatedSegment seg : segments) {
@@ -60,9 +60,11 @@ public class CostService {
         }
         result.newNetworkLength = totalLength;
 
-        // 2. Врезки и камеры
+        // 2. Врезки, камеры и junction-камеры.
+        //    segments передаётся, т.к. TieInService мутирует node-ID сегментов
+        //    при обнаружении junction-камер (ТЗ п.2.1).
         List<TieInService.TieInResult> tieIns = tieInService.determineTieIns(
-                routes, chambers, existingNetworks, oksDiameters);
+                routes, segments, chambers, existingNetworks, oksDiameters);
         result.tieIns = tieIns;
 
         int tieInCount = 0;
@@ -71,7 +73,7 @@ public class CostService {
 
         for (TieInService.TieInResult tieIn : tieIns) {
             if (tieIn.useExistingChamber) {
-                tieInCount++;
+                tieInCount += Math.max(1, tieIn.existingChamberTieInCount);
                 tieInCost += tieIn.tieInCost;
             } else {
                 chamberCost += tieIn.newChamberCost;

@@ -12,13 +12,19 @@ import org.locationtech.jts.geom.Point;
 import org.springframework.stereotype.Service;
 import ru.hackathon.heatnetworkservice.geometry.CoordinateTransformer;
 import ru.hackathon.heatnetworkservice.geometry.GraphBuilder;
+import ru.hackathon.heatnetworkservice.model.GeoObject;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -55,20 +61,26 @@ public class GeoJsonWriterService {
     private void writeVariant(JsonGenerator gen, VariantService.Variant variant) throws IOException {
         String variantId = variant.variantId;
 
-        // Карта маппинга net_... → ID узла
+        // Карта маппинга net_... → ID камеры / new chamber
         Map<String, String> nodeIdMap = buildNodeIdMap(variant);
 
-        // 1. Участки heat_network
+        // 1. Слияние последовательных сегментов в непрерывные LineString
+        //    (ТЗ п.2.1 и п.7.2: повороты без изменения параметров —
+        //     внутренние вершины LineString, а не отдельные участки).
+        List<FlowCalculationService.CalculatedSegment> mergedSegments =
+                mergeConsecutiveSegments(variant.segments, variant);
+
+        // 2. Участки heat_network
         int netIndex = 0;
-        for (FlowCalculationService.CalculatedSegment seg : variant.segments) {
+        for (FlowCalculationService.CalculatedSegment seg : mergedSegments) {
             netIndex++;
             writeNetworkSegment(gen, variantId, netIndex, seg, nodeIdMap);
         }
 
-        // 2. Технические узлы
+        // 3. Технические узлы
         writeTechnicalNodes(gen, variantId, variant, nodeIdMap);
 
-        // 3. Новые камеры
+        // 4. Новые камеры
         int chamberIndex = 0;
         for (TieInService.TieInResult tieIn : variant.cost.tieIns) {
             if (!tieIn.useExistingChamber) {
@@ -77,22 +89,231 @@ public class GeoJsonWriterService {
             }
         }
 
-        // 4. Сводка
+        // 5. Сводка
         writeVariantSummary(gen, variant);
     }
 
     /**
-     * Строит карту маппинга: net_... → ID камеры или technical_node.
+     * Слияние последовательных сегментов в непрерывные LineString
+     * между узлами остановки.
+     *
+     * ТЗ п.2.1: «Поворот без изменения параметров задаётся вершиной
+     * линейной геометрии (LineString) и отдельного узла не требует.»
+     *
+     * ТЗ п.7.2: «Поворот без изменения параметров остаётся внутренней
+     * вершиной LineString.»
+     *
+     * Узлы остановки:
+     *   - ОКС-точки (start/end всей цепочки);
+     *   - существующие и новые камеры (там заканчивается маршрут);
+     *   - узлы, где меняется ДУ между соседними сегментами;
+     *   - узлы, где меняется laying_method;
+     *   - узлы разветвления (степень ≥ 3) — чтобы не путать разные ветки.
+     *
+     * Условие склейки двух соседних сегментов:
+     *   - общий узел не является узлом остановки;
+     *   - одинаковый diameter;
+     *   - одинаковый laying_method;
+     *   - одинаковый flow_tph (иначе на узле присоединилась ещё одна ОКС,
+     *     и объединение изменило бы смысл атрибута «расчётный расход участка»).
+     */
+    private List<FlowCalculationService.CalculatedSegment> mergeConsecutiveSegments(
+            List<FlowCalculationService.CalculatedSegment> segments,
+            VariantService.Variant variant
+    ) {
+        if (segments == null || segments.isEmpty()) return segments;
+
+        // 1. Инцидентность: узел → список сегментов, которые его касаются
+        Map<String, List<FlowCalculationService.CalculatedSegment>> incident = new HashMap<>();
+        for (FlowCalculationService.CalculatedSegment seg : segments) {
+            incident.computeIfAbsent(seg.segmentStartNodeId, k -> new ArrayList<>()).add(seg);
+            incident.computeIfAbsent(seg.segmentEndNodeId, k -> new ArrayList<>()).add(seg);
+        }
+
+        // 2. Множество узлов остановки
+        Set<String> stopNodes = new HashSet<>();
+
+        for (GeoObject oks : variant.allOks) {
+            stopNodes.add(oks.getId());
+        }
+        for (GeoObject chamber : variant.chambers) {
+            stopNodes.add(chamber.getId());
+        }
+        for (TieInService.TieInResult tieIn : variant.cost.tieIns) {
+            if (!tieIn.useExistingChamber && tieIn.newChamberId != null) {
+                stopNodes.add(tieIn.newChamberId);
+            }
+        }
+
+        for (Map.Entry<String, List<FlowCalculationService.CalculatedSegment>> e : incident.entrySet()) {
+            List<FlowCalculationService.CalculatedSegment> list = e.getValue();
+            if (list.size() >= 3) {
+                // Развилка. Склеивать через неё нельзя, иначе потеряем структуру.
+                stopNodes.add(e.getKey());
+                continue;
+            }
+            if (list.size() == 2) {
+                FlowCalculationService.CalculatedSegment a = list.get(0);
+                FlowCalculationService.CalculatedSegment b = list.get(1);
+                if (a.diameter != b.diameter
+                        || !Objects.equals(a.layingMethod, b.layingMethod)) {
+                    stopNodes.add(e.getKey());
+                }
+            }
+        }
+
+        // 3. Строим цепочки
+        Set<FlowCalculationService.CalculatedSegment> used = new HashSet<>();
+        List<FlowCalculationService.CalculatedSegment> result = new ArrayList<>();
+
+        for (FlowCalculationService.CalculatedSegment seg : segments) {
+            if (used.contains(seg)) continue;
+
+            List<FlowCalculationService.CalculatedSegment> chain = new ArrayList<>();
+            chain.add(seg);
+            used.add(seg);
+
+            // 3а. Идём вперёд (по segmentEndNodeId)
+            String currentEnd = seg.segmentEndNodeId;
+            while (!stopNodes.contains(currentEnd)) {
+                FlowCalculationService.CalculatedSegment next =
+                        findNextSegment(segments, used, currentEnd, seg);
+                if (next == null) break;
+
+                if (next.segmentEndNodeId.equals(currentEnd)) {
+                    reverseSegmentGeometry(next);
+                    swapEnds(next);
+                }
+                chain.add(next);
+                used.add(next);
+                currentEnd = next.segmentEndNodeId;
+            }
+
+            // 3б. Идём назад (по segmentStartNodeId)
+            String currentStart = chain.get(0).segmentStartNodeId;
+            while (!stopNodes.contains(currentStart)) {
+                FlowCalculationService.CalculatedSegment prev =
+                        findPrevSegment(segments, used, currentStart, chain.get(0));
+                if (prev == null) break;
+
+                if (prev.segmentStartNodeId.equals(currentStart)) {
+                    reverseSegmentGeometry(prev);
+                    swapEnds(prev);
+                }
+                chain.add(0, prev);
+                used.add(prev);
+                currentStart = prev.segmentStartNodeId;
+            }
+
+            // 3в. Собираем итоговый сегмент
+            result.add(buildMergedSegment(chain));
+        }
+
+        log.info("Слияние сегментов: {} → {}", segments.size(), result.size());
+        return result;
+    }
+
+    private FlowCalculationService.CalculatedSegment findNextSegment(
+            List<FlowCalculationService.CalculatedSegment> all,
+            Set<FlowCalculationService.CalculatedSegment> used,
+            String nodeId,
+            FlowCalculationService.CalculatedSegment template
+    ) {
+        for (FlowCalculationService.CalculatedSegment s : all) {
+            if (used.contains(s)) continue;
+            if (s == template) continue;
+            boolean touches = s.segmentStartNodeId.equals(nodeId)
+                    || s.segmentEndNodeId.equals(nodeId);
+            if (!touches) continue;
+            if (s.diameter != template.diameter) continue;
+            if (!Objects.equals(s.layingMethod, template.layingMethod)) continue;
+            if (Double.compare(s.flowTph, template.flowTph) != 0) continue;
+            return s;
+        }
+        return null;
+    }
+
+    private FlowCalculationService.CalculatedSegment findPrevSegment(
+            List<FlowCalculationService.CalculatedSegment> all,
+            Set<FlowCalculationService.CalculatedSegment> used,
+            String nodeId,
+            FlowCalculationService.CalculatedSegment template
+    ) {
+        return findNextSegment(all, used, nodeId, template);
+    }
+
+    private void reverseSegmentGeometry(FlowCalculationService.CalculatedSegment seg) {
+        if (seg.geometry != null) {
+            seg.geometry = (LineString) seg.geometry.reverse();
+        }
+    }
+
+    private void swapEnds(FlowCalculationService.CalculatedSegment seg) {
+        String tmp = seg.segmentStartNodeId;
+        seg.segmentStartNodeId = seg.segmentEndNodeId;
+        seg.segmentEndNodeId = tmp;
+    }
+
+    /**
+     * Собирает единый LineString из цепочки сегментов.
+     * Все атрибуты (flow, diameter, laying_method) — одинаковые
+     * по построению цепочки. Длины и стоимости суммируются.
+     * ID ОКС — объединение.
+     */
+    private FlowCalculationService.CalculatedSegment buildMergedSegment(
+            List<FlowCalculationService.CalculatedSegment> chain
+    ) {
+        FlowCalculationService.CalculatedSegment first = chain.get(0);
+
+        FlowCalculationService.CalculatedSegment merged =
+                new FlowCalculationService.CalculatedSegment();
+        merged.segmentStartNodeId = first.segmentStartNodeId;
+        merged.segmentEndNodeId = chain.get(chain.size() - 1).segmentEndNodeId;
+        merged.diameter = first.diameter;
+        merged.layingMethod = first.layingMethod;
+        merged.kspec = first.kspec;
+        merged.flowTph = first.flowTph;
+
+        // Склейка координат без дублирования стыков
+        List<Coordinate> coords = new ArrayList<>();
+        for (int i = 0; i < chain.size(); i++) {
+            FlowCalculationService.CalculatedSegment s = chain.get(i);
+            Coordinate[] cs = s.geometry.getCoordinates();
+            for (int j = 0; j < cs.length; j++) {
+                if (i > 0 && j == 0) continue; // пропускаем точку стыка
+                coords.add(cs[j]);
+            }
+            merged.length += s.length;
+            merged.cost += s.cost;
+        }
+        merged.geometry = geometryFactory.createLineString(
+                coords.toArray(new Coordinate[0]));
+        merged.geometry.setSRID(32637);
+
+        // Объединение OKS-идентификаторов (в порядке первого появления)
+        Set<String> oksSet = new LinkedHashSet<>();
+        for (FlowCalculationService.CalculatedSegment s : chain) {
+            if (s.oksId == null) continue;
+            for (String id : s.oksId.split(",")) {
+                String trimmed = id.trim();
+                if (!trimmed.isEmpty()) oksSet.add(trimmed);
+            }
+        }
+        merged.oksId = String.join(",", oksSet);
+
+        return merged;
+    }
+
+    /**
+     * Строит карту маппинга: net_... → ID камеры (существующей или новой).
      */
     private Map<String, String> buildNodeIdMap(VariantService.Variant variant) {
         Map<String, String> map = new HashMap<>();
 
-        // Для каждого маршрута: конечный net_... → ID камеры
         for (RoutingService.Route route : variant.routes) {
             if (route.endNodeId == null) continue;
             if (!route.endNodeId.startsWith("net_")) continue;
 
-            // Ищем TieInResult для этого маршрута
             for (TieInService.TieInResult tieIn : variant.cost.tieIns) {
                 if (tieIn.oksId != null && tieIn.oksId.contains(route.oksId)) {
                     if (tieIn.useExistingChamber && tieIn.existingChamberId != null) {
@@ -144,7 +365,7 @@ public class GeoJsonWriterService {
         if (!originalId.startsWith("net_")) return originalId;
         String mapped = nodeIdMap.get(originalId);
         if (mapped != null) return mapped;
-        return originalId; // fallback
+        return originalId;
     }
 
     private void writeNewChamber(JsonGenerator gen, String variantId, int index,
@@ -251,7 +472,6 @@ public class GeoJsonWriterService {
 
         gen.writeArrayFieldStart("unconnected_oks_ids");
         for (String oksId : cost.unconnectedOksIds) {
-            // Тип ID сохраняем как во входных данных
             writeIdWithType(gen, oksId, variant);
         }
         gen.writeEndArray();
@@ -260,9 +480,6 @@ public class GeoJsonWriterService {
         gen.writeEndObject();
     }
 
-    /**
-     * Пишет ID в нужном типе (string или number) в зависимости от исходного типа.
-     */
     private void writeIdWithType(JsonGenerator gen, String id, VariantService.Variant variant) throws IOException {
         String idType = "string";
         if (variant.allOks != null) {

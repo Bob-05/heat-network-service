@@ -31,7 +31,7 @@ public class RoutingService {
         public String oksId;
         public Double oksFlowTph;
         public String endNodeId;
-        /** Всегда false: маршрут заканчивается на точке сети (net_*). */
+        /** true, если маршрут заканчивается в существующей heat_chamber (ТЗ п.2.4). */
         public boolean endIsChamber;
         public Coordinate endCoordinateUtm;
         public List<GraphBuilder.Edge> edges;
@@ -52,10 +52,6 @@ public class RoutingService {
         }
     }
 
-    /**
-     * Строит граф один раз. Используется VariantService для переиспользования
-     * между весами LENGTH/COST/SCORE (граф от веса не зависит).
-     */
     public List<GraphBuilder.Edge> buildGraphOnce(
             List<GeoObject> oksPoints,
             List<GeoObject> chambers,
@@ -74,7 +70,6 @@ public class RoutingService {
                 allNodes, oksPoints, obstacles, existingNetworks, diameter);
     }
 
-    /** Совместимость: строит граф и сразу ищет маршруты. */
     public List<Route> buildRoutes(
             List<GeoObject> oksPoints,
             List<GeoObject> chambers,
@@ -91,9 +86,13 @@ public class RoutingService {
     }
 
     /**
-     * Поиск маршрутов до точек сети.
-     * ТЗ п.2.1: разветвления только в камерах → ОКС запрещены как транзит.
-     * ТЗ п.2.4: решение «reuse chamber или new chamber» принимает TieInService.
+     * Поиск маршрутов до точек сети ИЛИ существующих heat_chamber.
+     *
+     * ТЗ п.2.1: разветвления только в тепловых камерах → ОКС запрещены
+     * как транзитные узлы.
+     * ТЗ п.2.4: если точка присоединения не далее 10 м от существующей
+     * heat_chamber — используется эта камера. Если маршрут заканчивается
+     * прямо в камере, условие заведомо выполняется.
      */
     public List<Route> findRoutes(
             List<GraphBuilder.Edge> edges,
@@ -109,16 +108,24 @@ public class RoutingService {
         }
 
         Map<String, List<GraphBuilder.Edge>> adjacency = buildAdjacency(edges);
+
         Set<String> oksIds = oksPoints.stream()
                 .map(GeoObject::getId)
                 .collect(Collectors.toSet());
-        Set<String> networkPointIds = adjacency.keySet().stream()
-                .filter(id -> id.startsWith("net_"))
+
+        Set<String> chamberIds = chambers.stream()
+                .map(GeoObject::getId)
                 .collect(Collectors.toSet());
+
+        Set<String> targetIds = new HashSet<>();
+        targetIds.addAll(adjacency.keySet().stream()
+                .filter(id -> id.startsWith("net_"))
+                .collect(Collectors.toSet()));
+        targetIds.addAll(chamberIds);
 
         List<Route> routes = oksPoints.parallelStream()
                 .map(oks -> {
-                    Route route = dijkstra(oks, networkPointIds, oksIds,
+                    Route route = dijkstra(oks, targetIds, oksIds, chamberIds,
                             adjacency, weightType);
                     if (route == null) {
                         log.warn("Маршрут для ОКС {} не найден", oks.getId());
@@ -159,6 +166,7 @@ public class RoutingService {
             GeoObject oks,
             Set<String> targetIds,
             Set<String> forbiddenIntermediateIds,
+            Set<String> chamberIds,
             Map<String, List<GraphBuilder.Edge>> adjacency,
             WeightType weightType
     ) {
@@ -195,6 +203,7 @@ public class RoutingService {
                 if (visited.contains(neighbor)) continue;
 
                 // ТЗ п.2.1: разветвления только в тепловых камерах.
+                // ОКС запрещены как транзитные узлы.
                 if (forbiddenIntermediateIds.contains(neighbor)
                         && !targetIds.contains(neighbor)) {
                     continue;
@@ -232,7 +241,8 @@ public class RoutingService {
             }
         }
 
-        return new Route(startId, oks.getFlowTph(), endNode, false,
+        boolean endIsChamber = chamberIds.contains(endNode);
+        return new Route(startId, oks.getFlowTph(), endNode, endIsChamber,
                 endCoordinateUtm, path);
     }
 }
