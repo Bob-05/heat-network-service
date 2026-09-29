@@ -2,26 +2,48 @@
 
 Сервис автоматического построения вариантов подключения перспективных объектов капитального строительства (ОКС) к существующей тепловой сети.
 
-**Важно:** реконструкция существующей тепловой сети **не выполняется** (разъяснение 14).
+**Кейс:** ЛЦТ 2026, «Сервис моделирования трасс подключения к тепловым сетям»
+**Команда:** Mesto
+
+---
 
 ## 🎯 Назначение
 
 Сервис принимает на вход один GeoJSON-файл с данными о существующей теплосети, камерах, точках подключения ОКС и пространственных ограничениях. На выходе — GeoJSON с готовыми маршрутами новых тепловых сетей, тепловыми камерами, техническими узлами и сводкой по вариантам.
 
+**Ключевые особенности:**
+
+- Построение маршрутов с учётом стоимости строительства и пропускной способности труб.
+- Проверка всех пространственных ограничений из таблицы 2 ТЗ (запретные зоны, спецпроходы, углы пересечения).
+- Подбор условного диаметра по расходу и предельной длине.
+- До трёх содержательно отличающихся вариантов подключения, ранжированных по итоговому показателю.
+- Интерактивный дашборд с картой OpenLayers, вкладками файлов и документации.
+- Полная упаковка в Docker: БД + приложение запускаются одной командой.
+
+**Важно:**
+
+- Реконструкция существующей тепловой сети **не выполняется** (разъяснение 14).
+- Отдельный объект `tie_in` **не формируется** — присоединение выполняется через `heat_chamber` (разъяснение 13).
+- Дополнительный режим с учётом глубины (раздел 5 ТЗ) **не реализован**. Выходная геометрия — двумерная, `depth_start` и `depth_end` передаются как `null`, `K_гл = 1`. Базовый 2D-режим полностью соответствует обязательной части ТЗ.
+
+---
+
 ## 🛠 Стек технологий
 
 | Компонент | Технология |
 |---|---|
-| **Язык** | Java 11 |
-| **Фреймворк** | Spring Boot 2.6.3 |
-| **База данных** | PostgreSQL 15 + PostGIS 3.3 (в Docker) |
-| **ORM** | Hibernate Spatial 5.6.4 |
-| **Геометрия** | JTS (Java Topology Suite) 1.18.2 |
-| **Проекции** | proj4j 1.2.2 + proj4j-epsg 1.2.2 |
-| **Сборка** | Maven |
-| **Документация API** | Springdoc OpenAPI 1.7.0 (генерирует `/v3/api-docs`) |
-| **Фронтенд** | Vanilla JS + OpenLayers 10.x (для карты) |
-| **Контейнеризация** | Docker + Docker Compose |
+| Язык | Java 11 |
+| Фреймворк | Spring Boot 2.6.3 |
+| База данных | PostgreSQL 15 + PostGIS 3.3 (в Docker) |
+| ORM | Hibernate Spatial 5.6.4 |
+| Геометрия | JTS (Java Topology Suite) 1.18.2 |
+| Проекции | proj4j 1.2.2 + proj4j-epsg 1.2.2 |
+| Сборка | Maven |
+| Документация API | Springdoc OpenAPI 1.7.0 |
+| Фронтенд | Vanilla JS + OpenLayers 10.x |
+| Контейнеризация | Docker + Docker Compose |
+
+---
 
 ## 🏗 Архитектура проекта
 
@@ -31,103 +53,108 @@ heat-network-service/
 │   ├── HeatNetworkServiceApplication.java   ← Точка входа Spring Boot
 │   │
 │   ├── controller/                          ← API-слой
-│   │   ├── FileController.java              ← Управление файлами ✅
-│   │   ├── TaskController.java              ← POST /solve, GET /status, GET /result ✅
+│   │   ├── FileController.java              ← Управление файлами
+│   │   ├── TaskController.java              ← POST /solve, GET /status, GET /result
 │   │   └── dto/
-│   │       ├── FileInfo.java                ✅
-│   │       └── TaskStatus.java              ✅
+│   │       ├── FileInfo.java
+│   │       └── TaskStatus.java
 │   │
 │   ├── service/                             ← Бизнес-логика
-│   │   ├── GeoJsonReaderService.java        ← Чтение GeoJSON ✅
-│   │   ├── GeoJsonWriterService.java        ← Запись GeoJSON ✅
-│   │   ├── TaskService.java                 ← Управление задачами ✅
-│   │   ├── RoutingService.java              ← Построение маршрутов ✅
-│   │   ├── FlowCalculationService.java      ← Расходы и диаметры ✅
-│   │   ├── CostService.java                 ← Расчёт стоимости ✅
-│   │   ├── TieInService.java                ← Определение врезок и камер ✅
-│   │   └── VariantService.java              ← Формирование вариантов ✅
+│   │   ├── GeoJsonReaderService.java        ← Чтение GeoJSON
+│   │   ├── GeoJsonWriterService.java        ← Запись GeoJSON
+│   │   ├── TaskService.java                 ← Оркестрация пайплайна
+│   │   ├── RoutingService.java              ← Поиск маршрутов (Дейкстра)
+│   │   ├── FlowCalculationService.java      ← Расходы, ДУ, предельная длина
+│   │   ├── CostService.java                 ← Расчёт стоимости и штрафов
+│   │   ├── TieInService.java                ← Врезки, камеры, junction-узлы
+│   │   └── VariantService.java              ← Формирование и ранжирование вариантов
 │   │
 │   ├── geometry/                            ← Работа с JTS
-│   │   ├── CoordinateTransformer.java       ← WGS84 ↔ UTM37N ✅
-│   │   ├── ObstacleChecker.java             ← Проверка препятствий ✅
-│   │   ├── GraphBuilder.java                ← Построение графа ✅
-│   │   └── OksPolygonIndex.java             ← Индекс полигонов ОКС ✅
+│   │   ├── CoordinateTransformer.java       ← WGS84 ↔ UTM37N
+│   │   ├── ObstacleChecker.java             ← Проверка ограничений таблицы 2
+│   │   ├── GraphBuilder.java                ← Построение графа трасс
+│   │   └── OksPolygonIndex.java             ← Индекс полигонов ОКС
 │   │
 │   ├── repository/                          ← Spring Data JPA
-│   │   └── GeoObjectRepository.java         ✅
+│   │   └── GeoObjectRepository.java
 │   │
 │   ├── model/                               ← JPA-сущность
-│   │   └── GeoObject.java                   ✅
+│   │   └── GeoObject.java
 │   │
 │   └── config/                              ← Конфигурация
-│       ├── OpenApiConfig.java               ✅
-│       ├── RoutingConfig.java               ✅
-│       ├── SwaggerUiConfig.java             ✅
-│       └── WebConfig.java                   ✅
+│       ├── OpenApiConfig.java
+│       ├── RoutingConfig.java
+│       ├── SwaggerUiConfig.java
+│       └── WebConfig.java
 │
 ├── src/main/resources/
-│   ├── application.yml                      ← Настройки приложения ✅
-│   └── static/                              ← Статические ресурсы (фронтенд) ✅
-│       ├── dashboard.html                   ← Интерактивный дашборд ✅
-│       ├── DOCUMENTATION.md                 ← Полная документация ✅
-│       └── lib/
-│           └── openlayers/
-│               └── ol.js                    ← Библиотека OpenLayers (карта) ✅
+│   ├── application.yml                      ← Настройки приложения
+│   └── static/                              ← Статические ресурсы
+│       ├── dashboard.html                   ← Интерактивный дашборд
+│       ├── DOCUMENTATION.md                 ← Полная документация
+│       └── lib/openlayers/ol.js             ← OpenLayers
 │
-├── pom.xml                                  ← Зависимости Maven ✅
-├── docker-compose.yml                       ← Запуск БД ✅
-├── README.md                                ← Этот файл ✅
-└── .gitignore                               ← Что не коммитить ✅
+├── Dockerfile                               ← Сборка образа приложения
+├── .dockerignore                            ← Исключения для контекста сборки
+├── docker-compose.yml                       ← Запуск БД + приложения
+├── pom.xml                                  ← Зависимости Maven
+├── README.md                                ← Этот файл
+└── .gitignore
 ```
 
-**Обозначения:**
-- ✅ — реализовано
-- ❌ — ещё не реализовано
+---
 
 ## 🚀 Быстрый старт
 
-### Предварительные требования
+### Вариант 1. Полный запуск через Docker (рекомендуется)
 
-- **Java 11 (JDK)** — [скачать Temurin 11](https://adoptium.net/temurin/releases/?version=11)
-- **IntelliJ IDEA** (Community Edition достаточно)
-- **Docker Desktop** — [скачать](https://www.docker.com/products/docker-desktop/)
-
-### Установка и запуск
-
-**1. Клонируйте репозиторий:**
+**Требования:** Docker Desktop.
 
 ```bash
+# Клонировать репозиторий
 git clone <ссылка-на-репозиторий>
 cd heat-network-service
+
+# Запустить БД и приложение
+docker compose up -d --build
 ```
 
-**2. Откройте проект в IntelliJ IDEA:**
+Первый билд занимает **20–25 минут** — скачиваются базовые образы Maven 3.8.6 (~570 МБ) и JRE 11 (~200 МБ). Последующие билды проходят за 1–2 минуты благодаря кешу Docker.
 
-- `File → Open` → выберите папку `heat-network-service` (там, где `pom.xml`).
-- IDEA автоматически подтянет зависимости Maven.
+После старта:
 
-**3. Запустите базу данных:**
+- Дашборд: http://localhost:8080/dashboard.html
+- OpenAPI JSON: http://localhost:8080/v3/api-docs
+
+Остановить:
+
+```bash
+docker compose down
+```
+
+Остановить и удалить данные БД:
+
+```bash
+docker compose down -v
+```
+
+### Вариант 2. Локальный запуск для разработки
+
+**Требования:** JDK 11, Docker Desktop, IntelliJ IDEA.
+
+**1. Поднять только БД:**
 
 ```bash
 docker compose up -d db
 ```
 
-Проверьте, что контейнер запущен:
+**2. Запустить приложение из IDEA:**
 
-```bash
-docker ps
-```
+Откройте `HeatNetworkServiceApplication.java` → нажмите зелёный треугольник → **Run**.
 
-Должен быть контейнер `heat-network-db` со статусом `Up`.
+Приложение стартует на `http://localhost:8080`.
 
-**4. Запустите приложение:**
-
-- В IDEA найдите `HeatNetworkServiceApplication.java`.
-- Нажмите зелёный треугольник → **Run**.
-
-Приложение запустится на `http://localhost:8080`.
-
-**5. Откройте дашборд:**
+**3. Открыть дашборд:**
 
 ```
 http://localhost:8080/dashboard.html
@@ -135,14 +162,9 @@ http://localhost:8080/dashboard.html
 
 Дашборд содержит пять вкладок: **Обработка**, **Файлы**, **Карта**, **API Docs**, **Документация**.
 
-## 📖 Документация API
+---
 
-Документация доступна двумя способами:
-
-- **Через дашборд:** вкладка **API Docs** — встроенный рендерер спецификации с возможностью выполнить запрос.
-- **Через OpenAPI JSON:** `http://localhost:8080/v3/api-docs`.
-
-Swagger UI (`/swagger-ui.html`) намеренно отключён — вместо него в дашборде своя вкладка API Docs, которая использует ту же спецификацию.
+## 📖 API
 
 ### Основные эндпоинты
 
@@ -156,17 +178,41 @@ Swagger UI (`/swagger-ui.html`) намеренно отключён — вмес
 | `DELETE` | `/api/v1/files/{type}/{fileName}` | Удалить файл |
 | `DELETE` | `/api/v1/files/{type}` | Очистить все файлы в каталоге |
 
+### Документация API
+
+- **JSON-спецификация:** `http://localhost:8080/v3/api-docs`
+- **Интерактивный просмотр:** вкладка **API Docs** в дашборде. Она использует ту же спецификацию `/v3/api-docs` и рендерит её самостоятельно с возможностью выполнить запрос прямо из браузера.
+
+Swagger UI (`/swagger-ui.html`) намеренно отключён в `application.yml` (`springdoc.swagger-ui.enabled: false`).
+
+### Пример работы через curl
+
+```bash
+# Загрузка
+curl -X POST http://localhost:8080/api/v1/solve -F "file=@input.geojson"
+
+# Статус
+curl http://localhost:8080/api/v1/status/<taskId>
+
+# Результат
+curl -o result.geojson http://localhost:8080/api/v1/result/<taskId>
+```
+
+---
+
 ## 🖥 Интерактивный дашборд
 
 Дашборд (`/dashboard.html`) предоставляет:
 
 - **Обработка** — загрузка GeoJSON и запуск обработки с отслеживанием статуса.
 - **Файлы** — просмотр, скачивание, фильтрация и удаление входных и выходных файлов.
-- **Карта** — визуализация входных данных и результата (OpenLayers + OSM). Раздельная подсветка обычной и специальной прокладки, всплывающие подсказки со свойствами объектов.
-- **API Docs** — встроенный рендерер OpenAPI-спецификации с возможностью выполнить запрос прямо из браузера.
-- **Документация** — этот развёрнутый справочник.
+- **Карта** — визуализация входных данных и результата (OpenLayers + OSM). Раздельная подсветка обычной и специальной прокладки, попап с русскими названиями атрибутов.
+- **API Docs** — встроенный рендерер OpenAPI-спецификации с возможностью выполнить запрос.
+- **Документация** — справочник, подгружаемый из `DOCUMENTATION.md`.
 
-## 📐 Ключевые правила ТЗ (актуальная версия)
+---
+
+## 📐 Ключевые правила ТЗ
 
 ### Входные данные
 
@@ -175,6 +221,8 @@ Swagger UI (`/swagger-ui.html`) намеренно отключён — вмес
 - **Существующая тепловая камера** (`heat_chamber`) — Point.
 - **Точка подключения ОКС** (`oks_connection_point`) — Point, с `flow_tph`.
 - **Пространственное ограничение** (`restriction`) — LineString / MultiLineString / Polygon / MultiPolygon, с `restriction_type`.
+
+Все входные координаты — WGS 84 (EPSG:4326). Расчёты выполняются в EPSG:32637 (UTM zone 37N).
 
 ### Типы ограничений (Таблица 2 ТЗ)
 
@@ -191,6 +239,10 @@ Swagger UI (`/swagger-ui.html`) намеренно отключён — вмес
 | `gas_pipeline` | Спецпроход | 2,0 м | — | 1,25 |
 | `power_cable` | Спецпроход | 2,0 м | — | 1,15 |
 | `heat_network` (пересечение без врезки) | Спецпроход | 1,0 м | — | 1,05 |
+
+**Важно (разъяснение 7):** минимальный угол проверяется только в точке пересечения специального участка; при прохождении рядом (без пересечения) проверяется минимальное горизонтальное расстояние, а угол — нет.
+
+**Важно (раздел 4 ТЗ):** при наложении специальных проходов друг на друга для расчёта стоимости применяется **наибольший** из соответствующих K_спец. Коэффициенты не суммируются и не перемножаются.
 
 ### Расчётные параметры (Таблица 1 ТЗ)
 
@@ -215,7 +267,7 @@ Swagger UI (`/swagger-ui.html`) намеренно отключён — вмес
 | 1200 | 15 012,8 | 9 288 | 428 074 |
 | 1400 | 22 501,9 | 11 276 | 683 417 |
 
-### Стоимость камер и врезок (Таблица 3.2 ТЗ)
+### Стоимость камер и врезок
 
 | Наибольший ДУ примыкающих участков | Стоимость новой камеры, руб. |
 |---|---|
@@ -233,8 +285,11 @@ S = 0,7 · (C / 25 000 000) + 0,3 · (L / 100)
 ```
 
 где:
-- `C` — итоговая стоимость варианта (`calculated_cost`), руб.
+
+- `C` — итоговая стоимость варианта (`calculated_cost`), руб.;
 - `L` — суммарная длина новых участков (`new_network_length`), м.
+
+Чем меньше `S`, тем лучше вариант.
 
 ### Штраф за неподключённые точки
 
@@ -244,31 +299,45 @@ S = 0,7 · (C / 25 000 000) + 0,3 · (L / 100)
 
 где `G` — расчётный расход точки подключения (`flow_tph`), т/ч.
 
-**Важно:** неподключение допускается **только если маршрут не найден**. Намеренный отказ запрещён (разъяснение 15).
+**Важно:** неподключение допускается только если маршрут не найден при соблюдении правил ТЗ. Намеренный отказ запрещён (разъяснение 15).
 
-## 🔄 Git Workflow
+---
 
-Мы используем **feature branch workflow**.
+## 🔧 Параметры маршрутизации
 
-### Основные правила
+Настраиваются в `application.yml`:
 
-1.  **Никогда не пушьте напрямую в `master`** — только через Pull Request.
-2.  **Создавайте отдельную ветку для каждой задачи:**
+```yaml
+routing:
+  max-edge-length: 5000.0        # макс. длина ребра графа, м
+  network-split-step: 5.0        # шаг разбиения существующих сетей, м
+  chamber-to-network-max: 50.0   # макс. расстояние камера ↔ сеть, м
+  corner-offset: 10.0            # смещение угловых узлов наружу, м
+  corner-corner-max: 300.0       # радиус поиска рёбер видимости, м
+  corner-network-max: 500.0      # радиус поиска сетевых точек от угла, м
+```
 
-    ```bash
-    git checkout master
-    git pull origin master
-    git checkout -b feature/краткое-описание
-    ```
+---
 
-3.  **Пушьте ветку на GitHub:**
+## 🤝 Git Workflow
 
-    ```bash
-    git push origin feature/краткое-описание
-    ```
+Мы используем feature branch workflow.
 
-4.  **Создавайте Pull Request** на GitHub: из вашей ветки в `master`.
-5.  **После мержа** — удалите ветку.
+1. Создайте ветку от `master`:
+
+   ```bash
+   git checkout master
+   git pull origin master
+   git checkout -b feature/краткое-описание
+   ```
+
+2. Внесите изменения, закоммитьте, запушьте:
+
+   ```bash
+   git push origin feature/краткое-описание
+   ```
+
+3. Создайте Pull Request на GitHub: из вашей ветки в `master`.
 
 ### Соглашение об именовании веток
 
@@ -279,98 +348,71 @@ S = 0,7 · (C / 25 000 000) + 0,3 · (L / 100)
 | `docs/` | Только документация | `docs/readme-update` |
 | `refactor/` | Рефакторинг без изменения поведения | `refactor/service-layer` |
 
-## 🤝 Как внести вклад
-
-1.  Создайте ветку от `master`.
-2.  Внесите изменения.
-3.  Пушьте ветку.
-4.  Создайте Pull Request.
-5.  Дождитесь ревью от напарника.
-
 ---
 
 ## 📊 Статус разработки
 
-> Проект находится на стадии активной разработки.
-
-### ✅ Что уже сделано
+### Реализовано
 
 **Инфраструктура**
-- [x] Настроен проект Spring Boot 2.6.3 на Java 11
-- [x] Настроен Maven с зависимостями (Web, JPA, PostgreSQL, Hibernate Spatial, JTS, Lombok, Springdoc OpenAPI, proj4j)
-- [x] Поднят PostgreSQL 15 + PostGIS 3.3 в Docker
-- [x] Настроено подключение к БД через `application.yml`
-- [x] Настроен `.gitignore`
-- [x] Создан репозиторий на GitHub
-- [x] Настроен Docker Compose для запуска БД
+
+- Spring Boot 2.6.3 на Java 11.
+- Maven с зависимостями (Web, JPA, PostgreSQL, Hibernate Spatial, JTS, Lombok, Springdoc OpenAPI, proj4j).
+- PostgreSQL 15 + PostGIS 3.3 в Docker.
+- Docker Compose для БД и приложения.
+- Dockerfile с двухэтапной сборкой (Maven build → JRE runtime).
 
 **Модель данных**
-- [x] JPA-сущность `GeoObject` (актуальная модель)
-- [x] Репозиторий `GeoObjectRepository`
+
+- JPA-сущность `GeoObject` (пространственная таблица `geo_objects`).
+- Репозиторий `GeoObjectRepository`.
 
 **API-слой**
-- [x] `TaskController` — `POST /solve`, `GET /status/{taskId}`, `GET /result/{taskId}`
-- [x] `FileController` — управление загруженными и результирующими файлами
-- [x] DTO для ответов (`TaskStatus`, `FileInfo`)
-- [x] Асинхронная обработка файлов (`@Async`)
+
+- `TaskController`: `POST /solve`, `GET /status/{taskId}`, `GET /result/{taskId}`.
+- `FileController`: список, скачивание, удаление входных и результирующих файлов.
+- DTO для ответов (`TaskStatus`, `FileInfo`).
+- Асинхронная обработка через `@Async`.
 
 **Потоковая обработка**
-- [x] `GeoJsonReaderService` — чтение GeoJSON (Point, LineString, MultiLineString, Polygon, MultiPolygon)
-- [x] `GeoJsonWriterService` — запись GeoJSON (heat_network, heat_chamber, technical_node, variant_summary)
-- [x] `TaskService` — управление задачами
+
+- `GeoJsonReaderService` — чтение GeoJSON (Point, LineString, MultiLineString, Polygon, MultiPolygon).
+- `GeoJsonWriterService` — запись GeoJSON, слияние последовательных участков, маппинг ID узлов.
+- `TaskService` — управление задачами.
 
 **Геометрия**
-- [x] `CoordinateTransformer` — WGS84 ↔ UTM37N (со всеми типами геометрии)
-- [x] `ObstacleChecker` — проверка препятствий (расстояния, углы, K_спец)
-- [x] `GraphBuilder` — построение графа
-- [x] `OksPolygonIndex` — индекс полигонов ОКС
+
+- `CoordinateTransformer` — WGS84 ↔ UTM37N с поддержкой всех типов геометрии.
+- `ObstacleChecker` — проверка запретных зон, расстояний, углов пересечения, K_спец.
+- `GraphBuilder` — построение графа: сеть-сеть, target-сеть, target-target, камера-сеть, рёбра видимости, угол-сеть.
+- `OksPolygonIndex` — пространственный индекс полигонов ОКС с поддержкой нескольких полигонов на одну точку.
 
 **Бизнес-логика**
-- [x] `RoutingService` — построение маршрутов (Дейкстра)
-- [x] `FlowCalculationService` — расходы, ДУ, предельная длина
-- [x] `CostService` — расчёт стоимости и штрафов
-- [x] `TieInService` — определение врезок и камер
-- [x] `VariantService` — формирование и ранжирование вариантов
+
+- `RoutingService` — Дейкстра с тремя весами: LENGTH, COST, SCORE.
+- `FlowCalculationService` — дедупликация рёбер, суммирование расходов, подбор ДУ по расходу и предельной длине.
+- `CostService` — стоимость участков, врезок, новых камер, штрафы за неподключённые точки, итоговый показатель.
+- `TieInService` — определение врезок и камер, junction-узлы, объединение совпадающих новых камер.
+- `VariantService` — формирование до трёх вариантов, дедупликация по сигнатуре маршрутов, ранжирование по score.
 
 **Конфигурация и UI**
-- [x] `OpenApiConfig` — настройка OpenAPI
-- [x] `RoutingConfig` — параметры маршрутизации
-- [x] `SwaggerUiConfig` — группировка API
-- [x] `WebConfig` — редирект на дашборд
-- [x] `dashboard.html` — интерактивный дашборд с картой и документацией
-- [x] `ol.js` (OpenLayers) — библиотека для карты
 
-### ❌ Что ещё не сделано
+- `OpenApiConfig`, `SwaggerUiConfig`, `RoutingConfig`, `WebConfig`.
+- `dashboard.html` — интерактивный дашборд с картой OpenLayers и русской локализацией атрибутов.
+- `DOCUMENTATION.md` — развёрнутый справочник по сервису.
 
-**Docker**
-- [ ] `Dockerfile` для приложения
-- [ ] Объединение app и db в одном `docker-compose.yml`
+### Не реализовано
 
-**Дополнительный режим**
-- [ ] Режим с учётом глубины (раздел 5 ТЗ) — опционально, может формировать отдельный набор вариантов
+- **Режим с учётом глубины (раздел 5 ТЗ).** Не является обязательным. Выходная геометрия — двумерная, `depth_start` / `depth_end` = `null`, `K_гл = 1`.
+
+### Планы по развитию
+
+- Доработка алгоритма маршрутизации для ускорения построения графа на больших данных.
+- Вынести в интерфейс настройку стоимости работ (коэффициенты, региональные тарифы).
+- Расширение поддержки типов ограничений за пределы таблицы 2.
+- Полноценная реализация режима с глубиной как отдельного набора вариантов.
 
 ---
-
-## 📅 План разработки
-
-### Неделя 1 (15–21 сентября)
-- [x] Инфраструктура
-- [x] JPA-сущности и репозитории
-- [x] `GeoJsonReaderService`
-- [x] `GeoJsonWriterService`
-- [x] `CoordinateTransformer`
-- [x] `TaskController`
-
-### Неделя 2 (22–29 сентября)
-- [x] `ObstacleChecker`
-- [x] `GraphBuilder`
-- [x] `RoutingService`
-- [x] `FlowCalculationService`
-- [x] `CostService`
-- [x] `VariantService`
-- [ ] `Dockerfile` + объединение docker-compose
-- [ ] Презентация и документация
-- [ ] **Дедлайн сдачи:** 29 сентября 2026, 23:59 МСК
 
 ## 📄 Лицензия
 

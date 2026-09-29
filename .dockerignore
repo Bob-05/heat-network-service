@@ -1,0 +1,10 @@
+target/
+.git/
+.idea/
+*.iml
+uploads/
+results/
+*.log
+Dockerfile
+docker-compose.yml
+README.md

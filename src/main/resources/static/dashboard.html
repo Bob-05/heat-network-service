@@ -1359,12 +1359,6 @@
             </div>
         </div>
 
-        <!--
-            Легенда приведена в соответствие с разделом 7.1 ТЗ:
-            в результате могут быть только heat_network (base/special),
-            heat_chamber и technical_node. Пункты про реконструкцию
-            и входные ОКС-точки убраны — их в выходном файле нет.
-        -->
         <div class="map-legend">
             <div class="map-legend-item">
                 <span class="map-legend-line" style="background:#1f6feb"></span>
@@ -2952,8 +2946,60 @@
     }
 
     /* =====================================================================
-       Часть 5. Карта
+       Часть 5. Карта (OpenLayers)
        ===================================================================== */
+
+    /* Словарь русских подписей для попапа карты.
+       Ключи — английские имена атрибутов, как они приходят в properties.
+       Незнакомые ключи отображаются как есть (fallback). */
+    const POPUP_LABELS = {
+        // общие
+        id:                 'Идентификатор',
+        object_type:        'Тип объекта',
+        variant_id:         'Вариант',
+
+        // heat_network
+        start_node_id:      'Начальный узел',
+        end_node_id:        'Конечный узел',
+        flow_tph:           'Расход, т/ч',
+        diameter:           'ДУ, мм',
+        length:             'Длина, м',
+        laying_method:      'Способ прокладки',
+        depth_start:        'Глубина в начале, м',
+        depth_end:          'Глубина в конце, м',
+        cost:               'Стоимость, руб.',
+
+        // variant_summary
+        rank:               'Место в ранжировании',
+        construction_cost:  'Стоимость строительства, руб.',
+        chamber_construction_cost: 'Стоимость новых камер, руб.',
+        existing_chamber_tie_in_count: 'Врезок в существующие камеры, шт.',
+        existing_chamber_tie_in_cost:  'Стоимость врезок, руб.',
+        unconnected_penalty:           'Штраф за неподключённые, руб.',
+        calculated_cost:    'Итоговая стоимость, руб.',
+        new_network_length: 'Длина новых участков, м',
+        score:              'Итоговый показатель',
+        unconnected_oks_ids:'Неподключённые ОКС',
+
+        // исходные данные
+        restriction_type:   'Тип ограничения',
+        heat_load:          'Тепловая нагрузка',
+        oks_id:             'ID ОКС',
+        upstream_object_id: 'Вышестоящий объект'
+    };
+
+    /* Словарь переводов для значений строковых атрибутов. */
+    const POPUP_VALUE_LABELS = {
+        'heat_network':        'Тепловая сеть',
+        'heat_chamber':        'Тепловая камера',
+        'technical_node':      'Технический узел',
+        'variant_summary':     'Сводка по варианту',
+        'oks_connection_point':'Точка подключения ОКС',
+        'restriction':         'Пространственное ограничение',
+        'source':              'Источник теплоснабжения',
+        'base':                'Обычный участок',
+        'special':             'Специальный проход'
+    };
 
     let olMap = null;
     let inputVectorSource = null;
@@ -3018,8 +3064,6 @@
             zIndex: 1
         });
 
-        // Стиль выходного слоя — только те object_type, что разрешены
-        // разделом 7.1 ТЗ: heat_network, heat_chamber, technical_node.
         outputVectorSource = new ol.source.Vector();
         outputVectorLayer = new ol.layer.Vector({
             source: outputVectorSource,
@@ -3144,6 +3188,7 @@
         }
     }
 
+    /* Показ попапа с русскими подписями атрибутов. */
     function showPopup(coordinate, feature) {
         const props = feature.getProperties();
         const skip = new Set(['geometry']);
@@ -3151,9 +3196,23 @@
         let html = '<b>' + escapeHtml(String(props.id || props.object_type || 'feature')) + '</b>';
         for (const [k, v] of Object.entries(props)) {
             if (skip.has(k) || v === null || v === undefined || v === '') continue;
-            const text = typeof v === 'object' ? JSON.stringify(v) : String(v);
+
+            // Подпись ключа: русская из словаря, иначе — как есть.
+            const label = POPUP_LABELS[k] || k;
+
+            // Значение: переводим известные строковые значения, объекты/массивы — JSON.
+            let text;
+            if (typeof v === 'object') {
+                text = JSON.stringify(v);
+            } else {
+                const key = String(v);
+                text = POPUP_VALUE_LABELS[key] !== undefined
+                    ? POPUP_VALUE_LABELS[key]
+                    : key;
+            }
+
             html += `<div class="popup-row">
-                <span class="popup-key">${escapeHtml(k)}</span>
+                <span class="popup-key">${escapeHtml(label)}</span>
                 <span class="popup-val">${escapeHtml(text)}</span>
             </div>`;
         }
