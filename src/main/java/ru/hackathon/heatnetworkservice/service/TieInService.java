@@ -17,50 +17,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * Сервис определения типа присоединения и подсчёта врезок.
- *
- * Правила (ТЗ п.2.1, п.2.4 + разъяснения 11, 12):
- *
- * 1. ТЗ п.2.4: если точка присоединения не далее 10 м от существующей
- *    heat_chamber и после подключения к камере будет примыкать не
- *    более 4 линейных участков — используется эта камера.
- *    Стоимость одной врезки 5 000 000 руб.
- *
- * 2. ТЗ п.2.1: «Разветвления выполняются только в тепловых камерах.»
- *    Поэтому ЛЮБОЙ узел графа со степенью >= 3, который не является
- *    ОКС-точкой и не является существующей/уже созданной камерой,
- *    автоматически повышается до новой heat_chamber (junction chamber).
- *    Диаметр = максимум ДУ примыкающих участков, стоимость — по таблице 3.2.
- *
- * 3. ТЗ п.2.4: новая камера в точке присоединения, если условия п.1
- *    не выполняются. Диаметр по наибольшему ДУ примыкающих участков.
- *    Стоимость новой камеры включает присоединение к существующей сети.
- *
- * 4. ВАЖНО: подсчёт примыканий учитывает как существующие, так и новые,
- *    созданные в рамках текущего построения (в т.ч. junction chambers).
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class TieInService {
 
-    /** ТЗ п.2.4: радиус, в котором endpoint считается «у существующей камеры». */
     private static final double MAX_DISTANCE_TO_CHAMBER_M = 10.0;
-
-    /** Разъяснение 12: не более 4 примыкающих линейных участков. */
     private static final int MAX_TIE_INS = 4;
-
-    /** Допуск на совпадение вершины сети с камерой (м). */
     private static final double VERTEX_MATCH_TOLERANCE_M = 1.0;
-
-    /** Стоимость одной врезки в существующую камеру (руб.). */
     private static final double TIE_IN_COST = 5_000_000.0;
-
-    /** Округление координат при объединении новых камер (м). */
     private static final double MERGE_PRECISION_M = 1.0;
-
-    /** ТЗ п.2.1: разветвление только в тепловой камере. */
     private static final int JUNCTION_MIN_DEGREE = 3;
 
     private final CoordinateTransformer coordinateTransformer;
@@ -80,20 +46,9 @@ public class TieInService {
         public double newChamberCost;
         public double tieInCost;
         public int existingChamberTieInCount;
-        /** Флаг для отладки: создан ли этот TieInResult как junction-камера. */
         public boolean isJunction;
     }
 
-    /**
-     * Основной метод.
-     *
-     * @param routes              маршруты, построенные RoutingService
-     * @param segments            дедуплицированные сегменты (может мутироваться:
-     *                            мы переименовываем tn_* узлы в ID junction-камер)
-     * @param chambers            список существующих камер (GeoObject)
-     * @param existingNetworks    существующие сети (для подсчёта примыканий)
-     * @param oksDiameters        ДУ для каждой ОКС (по наибольшему участку её маршрута)
-     */
     public List<TieInResult> determineTieIns(
             List<RoutingService.Route> routes,
             List<FlowCalculationService.CalculatedSegment> segments,
@@ -104,7 +59,6 @@ public class TieInService {
         log.info("Определение типа присоединения для {} маршрутов, {} сегментов",
                 routes.size(), segments == null ? 0 : segments.size());
 
-        // ---- Индекс существующих камер ----
         List<ChamberInfo> chamberInfos = new ArrayList<>();
         for (GeoObject chamber : chambers) {
             Geometry utmGeom = coordinateTransformer.toUtm37n(chamber.getGeometry());
@@ -112,16 +66,13 @@ public class TieInService {
             chamberInfos.add(new ChamberInfo(chamber.getId(), utmGeom.getCoordinate()));
         }
 
-        // Динамический учёт новых примыканий к существующим камерам (лимит ≤ 4).
         Map<String, Integer> dynamicNewTieInsCount = new HashMap<>();
         chamberIdCounter = 0;
         junctionIdCounter = 0;
 
         List<TieInResult> results = new ArrayList<>();
 
-        // ============================================================
-        // 1. Tie-ins для каждой ОКС: существующая или новая камера.
-        // ============================================================
+        // 1. Tie-ins для каждой ОКС.
         for (RoutingService.Route route : routes) {
             TieInResult result = new TieInResult();
             result.oksId = route.oksId;
@@ -144,7 +95,6 @@ public class TieInService {
                 continue;
             }
 
-            // Ищем существующую камеру в радиусе 10 м с учётом лимита ≤ 4 примыканий.
             ChamberInfo bestChamber = null;
             double bestDistance = Double.MAX_VALUE;
 
@@ -187,21 +137,14 @@ public class TieInService {
             results.add(result);
         }
 
-        // ============================================================
-        // 2. Junction chambers: узлы со степенью >= 3, не являющиеся камерой.
-        //    ТЗ п.2.1 — разветвления только в тепловых камерах.
-        // ============================================================
+        // 2. Junction chambers.
         List<TieInResult> junctions = detectJunctionChambers(
-                segments, results, chambers, chamberInfos);
+                segments, results, chambers, chamberInfos, existingNetworks);
 
-        // Переименовываем узлы в сегментах: tn_XXX → ID новой junction-камеры.
         applyJunctionRenaming(segments, junctions);
-
         results.addAll(junctions);
 
-        // ============================================================
         // 3. Объединение новых камер, оказавшихся в одной точке.
-        // ============================================================
         List<TieInResult> mergedResults = mergeNewChambers(results);
 
         long existingCount = mergedResults.stream()
@@ -216,29 +159,16 @@ public class TieInService {
         return mergedResults;
     }
 
-    /**
-     * ТЗ п.2.1: «Разветвления выполняются только в тепловых камерах».
-     *
-     * Находит все узлы графа со степенью >= 3, которые НЕ являются:
-     *   - ОКС-точками (start маршрутов),
-     *   - существующими камерами,
-     *   - уже созданными новыми камерами (по маршрутам ОКС).
-     *
-     * Для каждого такого узла создаёт junction-камеру:
-     *   - если рядом (<= 10 м) есть существующая камера — использует её,
-     *   - иначе создаёт новую heat_chamber с диаметром по наибольшему
-     *     примыкающему участку (ТЗ п.3.2) и стоимостью по таблице 3.2.
-     */
     private List<TieInResult> detectJunctionChambers(
             List<FlowCalculationService.CalculatedSegment> segments,
             List<TieInResult> existingTieIns,
             List<GeoObject> existingChambers,
-            List<ChamberInfo> chamberInfos
+            List<ChamberInfo> chamberInfos,
+            List<GeoObject> existingNetworks
     ) {
         List<TieInResult> junctions = new ArrayList<>();
         if (segments == null || segments.isEmpty()) return junctions;
 
-        // --- Подсчёт степени каждого узла, координаты и макс. ДУ ---
         Map<String, Integer> degree = new HashMap<>();
         Map<String, Coordinate> coordById = new HashMap<>();
         Map<String, Integer> maxDiameterById = new HashMap<>();
@@ -256,11 +186,9 @@ public class TieInService {
             maxDiameterById.merge(s.segmentEndNodeId,   s.diameter, Math::max);
         }
 
-        // --- Легальные узлы: существующие камеры + точки присоединения ОКС ---
         Set<String> legalNodes = new HashSet<>();
         for (GeoObject c : existingChambers) legalNodes.add(c.getId());
         for (TieInResult t : existingTieIns) {
-            // ОКС не повышаем до камеры.
             if (t.oksId != null) legalNodes.add(t.oksId);
             if (t.useExistingChamber && t.existingChamberId != null) {
                 legalNodes.add(t.existingChamberId);
@@ -270,28 +198,34 @@ public class TieInService {
             }
         }
 
-        // --- Для каждого узла со степенью >= 3, не попавшего в legalNodes, ---
-        // --- создаём junction-камеру.                                        ---
         for (Map.Entry<String, Integer> e : degree.entrySet()) {
             String nodeId = e.getKey();
             if (e.getValue() < JUNCTION_MIN_DEGREE) continue;
             if (legalNodes.contains(nodeId)) continue;
 
-            // Нас интересуют только узлы графа (угловые tn_* и сетевые net_*).
             if (!nodeId.startsWith("tn_") && !nodeId.startsWith("net_")) continue;
 
             Coordinate coord = coordById.get(nodeId);
             if (coord == null) continue;
 
-            // Если рядом есть существующая камера — используем её.
+            int junctionDegree = e.getValue();
+
             ChamberInfo best = null;
             double bestDist = Double.MAX_VALUE;
             for (ChamberInfo ci : chamberInfos) {
                 double d = coord.distance(ci.coordinate);
-                if (d <= MAX_DISTANCE_TO_CHAMBER_M && d < bestDist) {
-                    bestDist = d;
-                    best = ci;
+                if (d > MAX_DISTANCE_TO_CHAMBER_M) continue;
+                if (d >= bestDist) continue;
+
+                int baseExisting = countExistingTieIns(ci.coordinate, existingNetworks);
+                if (baseExisting + junctionDegree > MAX_TIE_INS) {
+                    log.info("Junction {}: камера {} не подходит ({} существующих + {} новых > {})",
+                            nodeId, ci.id, baseExisting, junctionDegree, MAX_TIE_INS);
+                    continue;
                 }
+
+                bestDist = d;
+                best = ci;
             }
 
             TieInResult j = new TieInResult();
@@ -302,14 +236,11 @@ public class TieInService {
             if (best != null) {
                 j.useExistingChamber = true;
                 j.existingChamberId = best.id;
-                // По ТЗ каждый линейный участок, заканчивающийся в существующей
-                // камере, — отдельная врезка. У junction-камеры таких участков
-                // столько, какова её степень.
-                j.existingChamberTieInCount = e.getValue();
-                j.tieInCost = TIE_IN_COST * e.getValue();
+                j.existingChamberTieInCount = junctionDegree;
+                j.tieInCost = TIE_IN_COST * junctionDegree;
 
                 log.info("Junction {} (degree={}): используем существующую камеру {} ({} м)",
-                        nodeId, e.getValue(), best.id, Math.round(bestDist));
+                        nodeId, junctionDegree, best.id, Math.round(bestDist));
             } else {
                 int diameter = maxDiameterById.getOrDefault(nodeId, 50);
                 j.useExistingChamber = false;
@@ -320,7 +251,7 @@ public class TieInService {
                 j.tieInCost = 0;
 
                 log.info("Junction {} (degree={}): новая камера ДУ {} стоимостью {}",
-                        nodeId, e.getValue(), diameter, Math.round(j.newChamberCost));
+                        nodeId, junctionDegree, diameter, Math.round(j.newChamberCost));
             }
 
             junctions.add(j);
@@ -329,15 +260,6 @@ public class TieInService {
         return junctions;
     }
 
-    /**
-     * Переименовывает segmentStartNodeId / segmentEndNodeId в сегментах:
-     * для каждого узла, ставшего junction-камерой, ID меняется на
-     * ID соответствующей камеры (новой или существующей).
-     *
-     * Это делается ДО передачи segments в costService и writer,
-     * чтобы start_node_id / end_node_id в выходном GeoJSON ссылались
-     * на реальный ID камеры.
-     */
     private void applyJunctionRenaming(
             List<FlowCalculationService.CalculatedSegment> segments,
             List<TieInResult> junctions
@@ -366,14 +288,8 @@ public class TieInService {
         Map<String, TieInResult> uniqueNewChambers = new LinkedHashMap<>();
 
         for (TieInResult result : results) {
-            if (result.useExistingChamber) {
-                merged.add(result);
-                continue;
-            }
-            if (result.newChamberCoordinate == null) {
-                merged.add(result);
-                continue;
-            }
+            if (result.useExistingChamber) { merged.add(result); continue; }
+            if (result.newChamberCoordinate == null) { merged.add(result); continue; }
 
             String key = Math.round(result.newChamberCoordinate.x / MERGE_PRECISION_M)
                     + "_" + Math.round(result.newChamberCoordinate.y / MERGE_PRECISION_M);
@@ -383,18 +299,15 @@ public class TieInService {
                 uniqueNewChambers.put(key, result);
                 merged.add(result);
             } else {
-                // Оставляем максимальный ДУ и стоимость.
                 if (result.newChamberDiameter > existing.newChamberDiameter) {
                     existing.newChamberDiameter = result.newChamberDiameter;
                     existing.newChamberCost = result.newChamberCost;
                 }
-                // Склеиваем oksId.
                 if (existing.oksId == null) {
                     existing.oksId = result.oksId;
                 } else if (result.oksId != null) {
                     existing.oksId = existing.oksId + "," + result.oksId;
                 }
-                // Пробрасываем флаг junction, если он есть.
                 if (result.isJunction) existing.isJunction = true;
 
                 log.info("Объединение камеры в точке ({}, {}): ОКС {} присоединена",
@@ -431,12 +344,6 @@ public class TieInService {
         return count;
     }
 
-    /**
-     * Проверяет, лежит ли точка строго ВНУТРИ отрезка (не на его концах).
-     * Точка, совпадающая с концом, считается примыканием через первую ветку
-     * countExistingTieIns — иначе камера на вершине полилинии ошибочно
-     * считалась бы «проходящей через два соседних сегмента» и давала +4.
-     */
     private boolean isPointOnSegment(Coordinate p, Coordinate a, Coordinate b,
                                      double tolerance) {
         if (p.distance(a) < tolerance || p.distance(b) < tolerance) return false;
@@ -448,10 +355,6 @@ public class TieInService {
         return Math.abs(d1 + d2 - segmentLength) < tolerance;
     }
 
-    /**
-     * Стоимость новой камеры по таблице 3.2 ТЗ
-     * (по наибольшему ДУ примыкающих участков).
-     */
     private double calculateNewChamberCost(int diameter) {
         if (diameter <= 200)  return 3_000_000;
         if (diameter <= 500)  return 5_000_000;

@@ -6,7 +6,6 @@ import org.springframework.context.annotation.Configuration;
 
 /**
  * Конфигурация параметров маршрутизации.
- * Значения можно менять в application.yml без перекомпиляции.
  *
  * Жёстко зафиксированные в ТЗ величины (ДУ, стоимость, габариты,
  * нормативные отступы, ограничение 10 м до существующей камеры,
@@ -23,9 +22,6 @@ public class RoutingConfig {
 
     /** Шаг разбиения существующих сетей на точки (м). */
     private double networkSplitStep = 5.0;
-
-    /** Радиус поиска вершин препятствий от целевого узла (м). */
-    private double targetObstacleRadius = 2000.0;
 
     /** Максимальное расстояние от существующей камеры до точки сети (м). */
     private double chamberToNetworkMax = 50.0;

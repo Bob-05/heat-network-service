@@ -3,7 +3,10 @@ package ru.hackathon.heatnetworkservice.geometry;
 import lombok.extern.slf4j.Slf4j;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.Geometry;
+import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.LineString;
+import org.locationtech.jts.geom.MultiLineString;
+import org.locationtech.jts.geom.MultiPolygon;
 import org.locationtech.jts.geom.Point;
 import org.locationtech.jts.geom.Polygon;
 import org.springframework.stereotype.Component;
@@ -14,6 +17,8 @@ import java.util.Map;
 @Slf4j
 @Component
 public class ObstacleChecker {
+
+    private static final GeometryFactory GF = new GeometryFactory();
 
     /** ТЗ Табл.2: минимальное горизонтальное расстояние (м). */
     private static final Map<String, Double> MIN_DISTANCE = new HashMap<>();
@@ -58,10 +63,7 @@ public class ObstacleChecker {
         MIN_ANGLE.put("tram_tracks", 45.0);
     }
 
-    /**
-     * ТЗ п.8.2: собственный расчётный габарит ограничения (полуширина).
-     * Для газопровода 0.40×0.40, для силового кабеля 0.20×0.20.
-     */
+    /** ТЗ п.3.1: собственный расчётный габарит ограничения (полуширина). */
     private static final Map<String, Double> OBSTACLE_HALF_WIDTH = new HashMap<>();
     static {
         OBSTACLE_HALF_WIDTH.put("gas_pipeline", 0.20); // 0.40 / 2
@@ -91,7 +93,6 @@ public class ObstacleChecker {
         PIPE_WIDTH.put(1400, 3.450);
     }
 
-    /** ТЗ Табл.2 + разъяснение 3: отступ до полигона ОКС зависит от ДУ. */
     public double getMinDistance(String restrictionType, int diameter) {
         if ("oks".equals(restrictionType)) {
             if (diameter < 500) return 5.0;
@@ -122,7 +123,7 @@ public class ObstacleChecker {
     }
 
     /**
-     * ТЗ п.3.1, п.8.2:
+     * ТЗ п.3.1, разъяснение 7:
      *  - для полигонального ограничения: расстояние от границы полигона
      *    до внешней границы расчётного габарита новой сети;
      *  - для линейного: от геометрии ограничения до внешней границы;
@@ -151,13 +152,14 @@ public class ObstacleChecker {
     }
 
     /**
-     * ТЗ п.4, п.8.1: проверка угла пересечения.
-     *  - для линейной геометрии — угол между направлением новой сети
-     *    и направлением линии ограничения в точке пересечения;
-     *  - для полигональной — угол между направлением новой сети и
-     *    границей полигона в ТОЧКЕ ВХОДА специального участка
-     *    (первая точка пересечения новой сети с границей полигона
-     *    вдоль направления от начала к концу ребра).
+     * ТЗ п.4 + разъяснение 6.
+     *   - LineString      — угол между направлением новой сети и линией;
+     *   - MultiLineString — угол по конкретной линии, пересекающей трассу;
+     *   - Polygon         — угол в точке входа относительно границы;
+     *   - MultiPolygon    — то же, ищем нужную линию границы.
+     *
+     * Fail-closed: если угол не удалось определить для ограничения
+     * с заданным минимумом — ребро отклоняется.
      */
     public boolean isAngleOk(LineString newNetwork, Geometry obstacle, String restrictionType) {
         Double minAngle = MIN_ANGLE.get(restrictionType);
@@ -165,47 +167,74 @@ public class ObstacleChecker {
 
         try {
             Coordinate entryPoint = findEntryPoint(newNetwork, obstacle);
-            if (entryPoint == null) return true;
+            if (entryPoint == null) {
+                log.warn("Не найдена точка входа при пересечении с {}", restrictionType);
+                return false;
+            }
 
             Coordinate tangentNew = tangentAt(newNetwork, entryPoint);
-            if (tangentNew == null) return true;
-
-            Coordinate tangentObs = null;
-            if (obstacle instanceof LineString) {
-                tangentObs = tangentAt((LineString) obstacle, entryPoint);
-            } else if (obstacle instanceof Polygon) {
-                Geometry boundary = obstacle.getBoundary();
-                if (boundary instanceof LineString) {
-                    tangentObs = tangentAt((LineString) boundary, entryPoint);
-                } else if (boundary != null) {
-                    // MultiLineString: ищем ту линию, на которой лежит точка
-                    for (int i = 0; i < boundary.getNumGeometries(); i++) {
-                        Geometry g = boundary.getGeometryN(i);
-                        if (g instanceof LineString) {
-                            Coordinate t = tangentAt((LineString) g, entryPoint);
-                            if (t != null) { tangentObs = t; break; }
-                        }
-                    }
-                }
+            if (tangentNew == null) {
+                log.warn("Не определён тангенс новой сети в точке входа ({})", restrictionType);
+                return false;
             }
-            if (tangentObs == null) return true;
+
+            Coordinate tangentObs = tangentAtObstacle(obstacle, entryPoint);
+            if (tangentObs == null) {
+                log.warn("Не определён тангенс ограничения {} в точке входа", restrictionType);
+                return false;
+            }
 
             double angle = angleBetween(tangentNew, tangentObs);
             return angle >= minAngle - 1e-6;
 
         } catch (Exception e) {
             log.warn("Ошибка проверки угла для {}: {}", restrictionType, e.getMessage());
-            return true;
+            return false;
         }
     }
 
-    /**
-     * Находит первую (вдоль направления newNetwork) точку пересечения
-     * с границей препятствия. Для полигона — это точка ВХОДА.
-     */
+    private Coordinate tangentAtObstacle(Geometry obstacle, Coordinate point) {
+        Geometry ref = obstacle;
+
+        if (obstacle instanceof Polygon || obstacle instanceof MultiPolygon) {
+            ref = obstacle.getBoundary();
+        }
+
+        if (ref instanceof LineString) {
+            return tangentAt((LineString) ref, point);
+        }
+        if (ref instanceof MultiLineString) {
+            MultiLineString mls = (MultiLineString) ref;
+            Point p = GF.createPoint(point);
+
+            for (int i = 0; i < mls.getNumGeometries(); i++) {
+                LineString g = (LineString) mls.getGeometryN(i);
+                if (g.distance(p) < 1e-6) {
+                    Coordinate t = tangentAt(g, point);
+                    if (t != null) return t;
+                }
+            }
+            double bestDist = Double.POSITIVE_INFINITY;
+            Coordinate best = null;
+            for (int i = 0; i < mls.getNumGeometries(); i++) {
+                LineString g = (LineString) mls.getGeometryN(i);
+                double d = g.distance(p);
+                if (d < bestDist) {
+                    Coordinate t = tangentAt(g, point);
+                    if (t != null) {
+                        bestDist = d;
+                        best = t;
+                    }
+                }
+            }
+            return best;
+        }
+        return null;
+    }
+
     private Coordinate findEntryPoint(LineString newNetwork, Geometry obstacle) {
         Geometry ref = obstacle;
-        if (obstacle instanceof Polygon || obstacle instanceof org.locationtech.jts.geom.MultiPolygon) {
+        if (obstacle instanceof Polygon || obstacle instanceof MultiPolygon) {
             ref = obstacle.getBoundary();
         }
         Geometry inter = newNetwork.intersection(ref);
@@ -215,7 +244,6 @@ public class ObstacleChecker {
         Coordinate best = null;
         double bestDist = Double.POSITIVE_INFINITY;
 
-        // Перебираем все точки пересечения и берём ближайшую к началу ребра.
         for (int i = 0; i < inter.getNumGeometries(); i++) {
             Geometry g = inter.getGeometryN(i);
             for (Coordinate c : g.getCoordinates()) {
@@ -248,7 +276,6 @@ public class ObstacleChecker {
         return dot >= -1e-6 && dot <= lenSq + 1e-6;
     }
 
-    /** Возвращает угол в [0°, 90°] между двумя направляющими векторами. */
     private double angleBetween(Coordinate v1, Coordinate v2) {
         double dot = v1.x * v2.x + v1.y * v2.y;
         double len1 = Math.hypot(v1.x, v1.y);

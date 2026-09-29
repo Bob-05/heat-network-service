@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -61,26 +62,19 @@ public class GeoJsonWriterService {
     private void writeVariant(JsonGenerator gen, VariantService.Variant variant) throws IOException {
         String variantId = variant.variantId;
 
-        // Карта маппинга net_... → ID камеры / new chamber
-        Map<String, String> nodeIdMap = buildNodeIdMap(variant);
-
-        // 1. Слияние последовательных сегментов в непрерывные LineString
-        //    (ТЗ п.2.1 и п.7.2: повороты без изменения параметров —
-        //     внутренние вершины LineString, а не отдельные участки).
         List<FlowCalculationService.CalculatedSegment> mergedSegments =
                 mergeConsecutiveSegments(variant.segments, variant);
 
-        // 2. Участки heat_network
+        Map<String, String> nodeIdMap = buildNodeIdMap(variant, mergedSegments);
+
         int netIndex = 0;
         for (FlowCalculationService.CalculatedSegment seg : mergedSegments) {
             netIndex++;
             writeNetworkSegment(gen, variantId, netIndex, seg, nodeIdMap);
         }
 
-        // 3. Технические узлы
-        writeTechnicalNodes(gen, variantId, variant, nodeIdMap);
+        writeTechnicalNodes(gen, variantId, mergedSegments, nodeIdMap);
 
-        // 4. Новые камеры
         int chamberIndex = 0;
         for (TieInService.TieInResult tieIn : variant.cost.tieIns) {
             if (!tieIn.useExistingChamber) {
@@ -89,56 +83,24 @@ public class GeoJsonWriterService {
             }
         }
 
-        // 5. Сводка
         writeVariantSummary(gen, variant);
     }
 
-    /**
-     * Слияние последовательных сегментов в непрерывные LineString
-     * между узлами остановки.
-     *
-     * ТЗ п.2.1: «Поворот без изменения параметров задаётся вершиной
-     * линейной геометрии (LineString) и отдельного узла не требует.»
-     *
-     * ТЗ п.7.2: «Поворот без изменения параметров остаётся внутренней
-     * вершиной LineString.»
-     *
-     * Узлы остановки:
-     *   - ОКС-точки (start/end всей цепочки);
-     *   - существующие и новые камеры (там заканчивается маршрут);
-     *   - узлы, где меняется ДУ между соседними сегментами;
-     *   - узлы, где меняется laying_method;
-     *   - узлы разветвления (степень ≥ 3) — чтобы не путать разные ветки.
-     *
-     * Условие склейки двух соседних сегментов:
-     *   - общий узел не является узлом остановки;
-     *   - одинаковый diameter;
-     *   - одинаковый laying_method;
-     *   - одинаковый flow_tph (иначе на узле присоединилась ещё одна ОКС,
-     *     и объединение изменило бы смысл атрибута «расчётный расход участка»).
-     */
     private List<FlowCalculationService.CalculatedSegment> mergeConsecutiveSegments(
             List<FlowCalculationService.CalculatedSegment> segments,
             VariantService.Variant variant
     ) {
         if (segments == null || segments.isEmpty()) return segments;
 
-        // 1. Инцидентность: узел → список сегментов, которые его касаются
         Map<String, List<FlowCalculationService.CalculatedSegment>> incident = new HashMap<>();
         for (FlowCalculationService.CalculatedSegment seg : segments) {
             incident.computeIfAbsent(seg.segmentStartNodeId, k -> new ArrayList<>()).add(seg);
             incident.computeIfAbsent(seg.segmentEndNodeId, k -> new ArrayList<>()).add(seg);
         }
 
-        // 2. Множество узлов остановки
         Set<String> stopNodes = new HashSet<>();
-
-        for (GeoObject oks : variant.allOks) {
-            stopNodes.add(oks.getId());
-        }
-        for (GeoObject chamber : variant.chambers) {
-            stopNodes.add(chamber.getId());
-        }
+        for (GeoObject oks : variant.allOks) stopNodes.add(oks.getId());
+        for (GeoObject chamber : variant.chambers) stopNodes.add(chamber.getId());
         for (TieInService.TieInResult tieIn : variant.cost.tieIns) {
             if (!tieIn.useExistingChamber && tieIn.newChamberId != null) {
                 stopNodes.add(tieIn.newChamberId);
@@ -148,7 +110,6 @@ public class GeoJsonWriterService {
         for (Map.Entry<String, List<FlowCalculationService.CalculatedSegment>> e : incident.entrySet()) {
             List<FlowCalculationService.CalculatedSegment> list = e.getValue();
             if (list.size() >= 3) {
-                // Развилка. Склеивать через неё нельзя, иначе потеряем структуру.
                 stopNodes.add(e.getKey());
                 continue;
             }
@@ -162,7 +123,6 @@ public class GeoJsonWriterService {
             }
         }
 
-        // 3. Строим цепочки
         Set<FlowCalculationService.CalculatedSegment> used = new HashSet<>();
         List<FlowCalculationService.CalculatedSegment> result = new ArrayList<>();
 
@@ -173,13 +133,11 @@ public class GeoJsonWriterService {
             chain.add(seg);
             used.add(seg);
 
-            // 3а. Идём вперёд (по segmentEndNodeId)
             String currentEnd = seg.segmentEndNodeId;
             while (!stopNodes.contains(currentEnd)) {
                 FlowCalculationService.CalculatedSegment next =
                         findNextSegment(segments, used, currentEnd, seg);
                 if (next == null) break;
-
                 if (next.segmentEndNodeId.equals(currentEnd)) {
                     reverseSegmentGeometry(next);
                     swapEnds(next);
@@ -189,13 +147,11 @@ public class GeoJsonWriterService {
                 currentEnd = next.segmentEndNodeId;
             }
 
-            // 3б. Идём назад (по segmentStartNodeId)
             String currentStart = chain.get(0).segmentStartNodeId;
             while (!stopNodes.contains(currentStart)) {
                 FlowCalculationService.CalculatedSegment prev =
                         findPrevSegment(segments, used, currentStart, chain.get(0));
                 if (prev == null) break;
-
                 if (prev.segmentStartNodeId.equals(currentStart)) {
                     reverseSegmentGeometry(prev);
                     swapEnds(prev);
@@ -205,7 +161,6 @@ public class GeoJsonWriterService {
                 currentStart = prev.segmentStartNodeId;
             }
 
-            // 3в. Собираем итоговый сегмент
             result.add(buildMergedSegment(chain));
         }
 
@@ -254,12 +209,6 @@ public class GeoJsonWriterService {
         seg.segmentEndNodeId = tmp;
     }
 
-    /**
-     * Собирает единый LineString из цепочки сегментов.
-     * Все атрибуты (flow, diameter, laying_method) — одинаковые
-     * по построению цепочки. Длины и стоимости суммируются.
-     * ID ОКС — объединение.
-     */
     private FlowCalculationService.CalculatedSegment buildMergedSegment(
             List<FlowCalculationService.CalculatedSegment> chain
     ) {
@@ -274,13 +223,12 @@ public class GeoJsonWriterService {
         merged.kspec = first.kspec;
         merged.flowTph = first.flowTph;
 
-        // Склейка координат без дублирования стыков
         List<Coordinate> coords = new ArrayList<>();
         for (int i = 0; i < chain.size(); i++) {
             FlowCalculationService.CalculatedSegment s = chain.get(i);
             Coordinate[] cs = s.geometry.getCoordinates();
             for (int j = 0; j < cs.length; j++) {
-                if (i > 0 && j == 0) continue; // пропускаем точку стыка
+                if (i > 0 && j == 0) continue;
                 coords.add(cs[j]);
             }
             merged.length += s.length;
@@ -290,7 +238,6 @@ public class GeoJsonWriterService {
                 coords.toArray(new Coordinate[0]));
         merged.geometry.setSRID(32637);
 
-        // Объединение OKS-идентификаторов (в порядке первого появления)
         Set<String> oksSet = new LinkedHashSet<>();
         for (FlowCalculationService.CalculatedSegment s : chain) {
             if (s.oksId == null) continue;
@@ -305,9 +252,14 @@ public class GeoJsonWriterService {
     }
 
     /**
-     * Строит карту маппинга: net_... → ID камеры (существующей или новой).
+     * Маппинг внутренних ID → публичные ID выходного GeoJSON.
+     *   - net_*      → ID существующей или новой камеры;
+     *   - tn_split_* → vN_tn_M (технический узел).
      */
-    private Map<String, String> buildNodeIdMap(VariantService.Variant variant) {
+    private Map<String, String> buildNodeIdMap(
+            VariantService.Variant variant,
+            List<FlowCalculationService.CalculatedSegment> mergedSegments
+    ) {
         Map<String, String> map = new HashMap<>();
 
         for (RoutingService.Route route : variant.routes) {
@@ -324,6 +276,20 @@ public class GeoJsonWriterService {
                     break;
                 }
             }
+        }
+
+        int tnCounter = 0;
+        Set<String> seenTn = new LinkedHashSet<>();
+        for (FlowCalculationService.CalculatedSegment seg : mergedSegments) {
+            if (seg.segmentStartNodeId != null && seg.segmentStartNodeId.startsWith("tn_split_")) {
+                seenTn.add(seg.segmentStartNodeId);
+            }
+            if (seg.segmentEndNodeId != null && seg.segmentEndNodeId.startsWith("tn_split_")) {
+                seenTn.add(seg.segmentEndNodeId);
+            }
+        }
+        for (String tn : seenTn) {
+            map.put(tn, variant.variantId + "_tn_" + (++tnCounter));
         }
 
         return map;
@@ -362,10 +328,8 @@ public class GeoJsonWriterService {
 
     private String mapNodeId(String originalId, Map<String, String> nodeIdMap) {
         if (originalId == null) return null;
-        if (!originalId.startsWith("net_")) return originalId;
         String mapped = nodeIdMap.get(originalId);
-        if (mapped != null) return mapped;
-        return originalId;
+        return mapped != null ? mapped : originalId;
     }
 
     private void writeNewChamber(JsonGenerator gen, String variantId, int index,
@@ -392,61 +356,46 @@ public class GeoJsonWriterService {
     }
 
     private void writeTechnicalNodes(JsonGenerator gen, String variantId,
-                                     VariantService.Variant variant,
+                                     List<FlowCalculationService.CalculatedSegment> mergedSegments,
                                      Map<String, String> nodeIdMap) throws IOException {
-        int index = 0;
-        java.util.Set<String> seen = new java.util.HashSet<>();
+        Map<String, Coordinate> outputIdToCoord = new LinkedHashMap<>();
 
-        for (RoutingService.Route route : variant.routes) {
-            List<GraphBuilder.Edge> edges = route.edges;
-            for (int i = 0; i < edges.size() - 1; i++) {
-                GraphBuilder.Edge current = edges.get(i);
-                GraphBuilder.Edge next = edges.get(i + 1);
+        for (FlowCalculationService.CalculatedSegment seg : mergedSegments) {
+            if (seg.geometry == null) continue;
 
-                if (current.layingMethod.equals(next.layingMethod)) continue;
-
-                Coordinate boundaryUtm = current.toCoordinateUtm;
-                String key = Math.round(boundaryUtm.x) + "_" + Math.round(boundaryUtm.y);
-                if (seen.contains(key)) continue;
-                seen.add(key);
-
-                if (isOksOrChamber(boundaryUtm, variant)) continue;
-
-                index++;
-                gen.writeStartObject();
-                gen.writeStringField("type", "Feature");
-
-                gen.writeObjectFieldStart("geometry");
-                Point utmPoint = geometryFactory.createPoint(boundaryUtm);
-                utmPoint.setSRID(32637);
-                writeGeometry(gen, toWgs84(utmPoint));
-                gen.writeEndObject();
-
-                gen.writeObjectFieldStart("properties");
-                gen.writeStringField("id", variantId + "_tn_" + index);
-                gen.writeStringField("object_type", "technical_node");
-                gen.writeStringField("variant_id", variantId);
-                gen.writeEndObject();
-
-                gen.writeEndObject();
+            if (seg.segmentStartNodeId != null && seg.segmentStartNodeId.startsWith("tn_split_")) {
+                String outId = nodeIdMap.get(seg.segmentStartNodeId);
+                if (outId != null) {
+                    outputIdToCoord.putIfAbsent(outId, seg.geometry.getCoordinateN(0));
+                }
+            }
+            if (seg.segmentEndNodeId != null && seg.segmentEndNodeId.startsWith("tn_split_")) {
+                String outId = nodeIdMap.get(seg.segmentEndNodeId);
+                if (outId != null) {
+                    outputIdToCoord.putIfAbsent(outId,
+                            seg.geometry.getCoordinateN(seg.geometry.getNumPoints() - 1));
+                }
             }
         }
-    }
 
-    private boolean isOksOrChamber(Coordinate coordUtm, VariantService.Variant variant) {
-        for (var oks : variant.allOks) {
-            Geometry utmGeom = coordinateTransformer.toUtm37n(oks.getGeometry());
-            if (utmGeom != null && utmGeom.getCoordinate().distance(coordUtm) < 1.0) {
-                return true;
-            }
+        for (Map.Entry<String, Coordinate> e : outputIdToCoord.entrySet()) {
+            gen.writeStartObject();
+            gen.writeStringField("type", "Feature");
+
+            gen.writeObjectFieldStart("geometry");
+            Point utmPoint = geometryFactory.createPoint(e.getValue());
+            utmPoint.setSRID(32637);
+            writeGeometry(gen, toWgs84(utmPoint));
+            gen.writeEndObject();
+
+            gen.writeObjectFieldStart("properties");
+            gen.writeStringField("id", e.getKey());
+            gen.writeStringField("object_type", "technical_node");
+            gen.writeStringField("variant_id", variantId);
+            gen.writeEndObject();
+
+            gen.writeEndObject();
         }
-        for (var chamber : variant.chambers) {
-            Geometry utmGeom = coordinateTransformer.toUtm37n(chamber.getGeometry());
-            if (utmGeom != null && utmGeom.getCoordinate().distance(coordUtm) < 1.0) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private void writeVariantSummary(JsonGenerator gen, VariantService.Variant variant) throws IOException {

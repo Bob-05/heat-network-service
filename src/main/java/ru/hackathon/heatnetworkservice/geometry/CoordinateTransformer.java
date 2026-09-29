@@ -37,6 +37,7 @@ public class CoordinateTransformer {
         Geometry result;
         if (geometry instanceof Point) result = transformPoint((Point) geometry);
         else if (geometry instanceof LineString) result = transformLineString((LineString) geometry);
+        else if (geometry instanceof MultiLineString) result = transformMultiLineString((MultiLineString) geometry);
         else if (geometry instanceof Polygon) result = transformPolygon((Polygon) geometry);
         else if (geometry instanceof MultiPolygon) result = transformMultiPolygon((MultiPolygon) geometry);
         else throw new IllegalArgumentException("Неизвестный тип геометрии: " + geometry.getGeometryType());
@@ -49,6 +50,7 @@ public class CoordinateTransformer {
         Geometry result;
         if (geometry instanceof Point) result = transformPointReverse((Point) geometry);
         else if (geometry instanceof LineString) result = transformLineStringReverse((LineString) geometry);
+        else if (geometry instanceof MultiLineString) result = transformMultiLineStringReverse((MultiLineString) geometry);
         else throw new IllegalArgumentException("Неподдерживаемый тип для обратного преобразования: " + geometry.getGeometryType());
         result.setSRID(4326);
         return result;
@@ -71,6 +73,14 @@ public class CoordinateTransformer {
         Coordinate[] coords = new Coordinate[lineString.getNumPoints()];
         for (int i = 0; i < coords.length; i++) coords[i] = transformCoordinate(lineString.getCoordinateN(i));
         return geometryFactory.createLineString(coords);
+    }
+
+    private MultiLineString transformMultiLineString(MultiLineString multi) {
+        LineString[] lines = new LineString[multi.getNumGeometries()];
+        for (int i = 0; i < lines.length; i++) {
+            lines[i] = transformLineString((LineString) multi.getGeometryN(i));
+        }
+        return geometryFactory.createMultiLineString(lines);
     }
 
     private Polygon transformPolygon(Polygon polygon) {
@@ -109,5 +119,13 @@ public class CoordinateTransformer {
         Coordinate[] coords = new Coordinate[lineString.getNumPoints()];
         for (int i = 0; i < coords.length; i++) coords[i] = transformCoordinateReverse(lineString.getCoordinateN(i));
         return geometryFactory.createLineString(coords);
+    }
+
+    private MultiLineString transformMultiLineStringReverse(MultiLineString multi) {
+        LineString[] lines = new LineString[multi.getNumGeometries()];
+        for (int i = 0; i < lines.length; i++) {
+            lines[i] = transformLineStringReverse((LineString) multi.getGeometryN(i));
+        }
+        return geometryFactory.createMultiLineString(lines);
     }
 }

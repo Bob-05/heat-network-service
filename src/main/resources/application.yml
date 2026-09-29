@@ -62,7 +62,6 @@ logging:
 routing:
   max-edge-length: 5000.0
   network-split-step: 5.0
-  target-obstacle-radius: 2000.0
   chamber-to-network-max: 50.0
   corner-offset: 10.0
   corner-corner-max: 300.0

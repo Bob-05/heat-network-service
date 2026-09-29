@@ -43,6 +43,20 @@ public class FlowCalculationService {
         return DIAMETERS[DIAMETERS.length - 1];
     }
 
+    public int selectDiameterByFlow(double flowTph) {
+        for (int i = 0; i < DIAMETERS.length; i++) {
+            if (CAPACITY_TPH[i] >= flowTph) return DIAMETERS[i];
+        }
+        return DIAMETERS[DIAMETERS.length - 1];
+    }
+
+    public double maxLengthForDiameter(int diameter) {
+        for (int i = 0; i < DIAMETERS.length; i++) {
+            if (DIAMETERS[i] == diameter) return MAX_LENGTH_M[i];
+        }
+        return MAX_LENGTH_M[MAX_LENGTH_M.length - 1];
+    }
+
     public double getCostPerMeter(int diameter) {
         for (int i = 0; i < DIAMETERS.length; i++) {
             if (DIAMETERS[i] == diameter) return COST_PER_M[i];
@@ -50,29 +64,15 @@ public class FlowCalculationService {
         return COST_PER_M[COST_PER_M.length - 1];
     }
 
-    /**
-     * Группирует рёбра маршрутов по неориентированному ключу (дедупликация общих
-     * участков), выбирает ДУ по суммарному расходу ребра и максимальной длине
-     * пути, обеспечивает неуменьшение ДУ к месту присоединения (ТЗ п.2.3).
-     *
-     * ВАЖНО: дедупликация общих участков происходит именно здесь — через
-     * makeUndirectedKey. Сворачивание последовательных рёбер в один LineString
-     * (для представления в GeoJSON) выполняется в GeoJsonWriterService и НЕ
-     * должно попадать сюда: свернуть рёбра до группировки = потерять
-     * дедупликацию и завысить суммарную длину.
-     */
     public List<CalculatedSegment> calculateMergedSegments(List<RoutingService.Route> routes) {
         log.info("Расчёт объединённых участков для {} маршрутов", routes.size());
 
-        // 1. Группировка рёбер по неориентированному ключу
+        // 1. Группировка рёбер по неориентированному ключу (ТЗ п.2.3).
         Map<String, MergedEdge> edgeGroups = new LinkedHashMap<>();
-
         for (RoutingService.Route route : routes) {
             if (route.oksFlowTph == null) continue;
-
             for (GraphBuilder.Edge edge : route.edges) {
                 String key = makeUndirectedKey(edge.fromId, edge.toId);
-
                 MergedEdge me = edgeGroups.computeIfAbsent(key, k -> new MergedEdge());
                 if (me.fromId == null) {
                     me.fromId = edge.fromId;
@@ -82,77 +82,99 @@ public class FlowCalculationService {
                     me.layingMethod = edge.layingMethod;
                     me.kspec = edge.kspec;
                 }
-
                 if (!me.oksIds.contains(route.oksId)) {
                     me.oksIds.add(route.oksId);
                     me.totalFlowTph += route.oksFlowTph;
-                }
-
-                // Предельная длина проверяется по непрерывному пути (ТЗ п.2.3):
-                // берём максимум длины среди маршрутов, проходящих через ребро.
-                if (route.totalLength > me.maxPathLength) {
-                    me.maxPathLength = route.totalLength;
                 }
             }
         }
 
         log.info("Уникальных (неориентированных) рёбер: {}", edgeGroups.size());
 
-        // 2. Выбор ДУ по суммарному расходу и максимальной длине пути
+        // 2. Начальные ДУ — минимальные по расходу.
         for (MergedEdge me : edgeGroups.values()) {
-            me.diameter = selectDiameter(me.totalFlowTph, me.maxPathLength);
-            log.debug("Ребро {}→{}: расход {} т/ч, макс.длина пути {} м → ДУ {}",
-                    me.fromId, me.toId,
-                    Math.round(me.totalFlowTph * 100.0) / 100.0,
-                    Math.round(me.maxPathLength),
-                    me.diameter);
+            me.diameter = selectDiameterByFlow(me.totalFlowTph);
         }
 
-        // 3. Проверка неуменьшения ДУ по направлению к сети (ТЗ п.2.3)
+        // 3. Итеративное повышение ДУ по предельной длине участка
+        //    с неизменным расходом (разъяснение 1).
         boolean changed = true;
-        int iterations = 0;
-        int maxIterations = 50;
+        int iter = 0;
+        int maxIter = 50;
 
-        while (changed && iterations++ < maxIterations) {
+        while (changed && iter++ < maxIter) {
             changed = false;
+
+            Map<String, Double> sameFlowPathLengths =
+                    computeSameFlowPathLengths(edgeGroups, routes);
+
+            // Для каждого ребра: если длина под-пути с тем же расходом
+            // превышает предельную для текущего ДУ — поднимаем ДУ на всём
+            // этом под-пути (все рёбра с тем же расходом).
+            Set<Double> flowsToRaise = new HashSet<>();
+            for (Map.Entry<String, Double> e : sameFlowPathLengths.entrySet()) {
+                MergedEdge me = edgeGroups.get(e.getKey());
+                if (me == null) continue;
+                double pathLen = e.getValue();
+                double limit = maxLengthForDiameter(me.diameter);
+                if (pathLen > limit) {
+                    flowsToRaise.add(me.totalFlowTph);
+                }
+            }
+            for (Double flow : flowsToRaise) {
+                if (raiseDiameterForFlow(flow, edgeGroups, sameFlowPathLengths)) {
+                    changed = true;
+                }
+            }
+        }
+
+        if (iter >= maxIter) {
+            log.warn("Подбор ДУ по предельной длине не стабилизировался за {} итераций", maxIter);
+        }
+
+        // 4. Проверка неуменьшения ДУ по направлению к месту присоединения.
+        boolean changedDir = true;
+        int iterDir = 0;
+        while (changedDir && iterDir++ < maxIter) {
+            changedDir = false;
 
             Map<String, Integer> maxInDiameter = new HashMap<>();
             for (RoutingService.Route route : routes) {
                 if (route.oksFlowTph == null) continue;
-                for (GraphBuilder.Edge edge : route.edges) {
+                List<String[]> oriented = buildOrientedEdges(route);
+                for (int i = 0; i < route.edges.size(); i++) {
+                    GraphBuilder.Edge edge = route.edges.get(i);
+                    String toNode = oriented.get(i)[1];
                     String key = makeUndirectedKey(edge.fromId, edge.toId);
                     MergedEdge me = edgeGroups.get(key);
                     if (me == null) continue;
-                    int cur = maxInDiameter.getOrDefault(edge.toId, 0);
-                    if (me.diameter > cur) {
-                        maxInDiameter.put(edge.toId, me.diameter);
-                    }
+                    maxInDiameter.merge(toNode, me.diameter, Math::max);
                 }
             }
 
             for (RoutingService.Route route : routes) {
                 if (route.oksFlowTph == null) continue;
-                for (GraphBuilder.Edge edge : route.edges) {
+                List<String[]> oriented = buildOrientedEdges(route);
+                for (int i = 0; i < route.edges.size(); i++) {
+                    GraphBuilder.Edge edge = route.edges.get(i);
+                    String fromNode = oriented.get(i)[0];
                     String key = makeUndirectedKey(edge.fromId, edge.toId);
                     MergedEdge me = edgeGroups.get(key);
                     if (me == null) continue;
-
-                    Integer maxIn = maxInDiameter.get(edge.fromId);
+                    Integer maxIn = maxInDiameter.get(fromNode);
                     if (maxIn != null && maxIn > me.diameter) {
                         me.diameter = maxIn;
-                        changed = true;
+                        changedDir = true;
                     }
                 }
             }
         }
-
-        if (iterations >= maxIterations) {
-            log.warn("Проверка неуменьшения ДУ не стабилизировалась за {} итераций", maxIterations);
+        if (iterDir >= maxIter) {
+            log.warn("Проверка неуменьшения ДУ не стабилизировалась за {} итераций", maxIter);
         }
 
-        // 4. Формирование результата
+        // 5. Результат.
         List<CalculatedSegment> result = new ArrayList<>();
-
         for (MergedEdge me : edgeGroups.values()) {
             CalculatedSegment seg = new CalculatedSegment();
             seg.oksId = String.join(",", me.oksIds);
@@ -181,41 +203,110 @@ public class FlowCalculationService {
         return result;
     }
 
+    /**
+     * Для каждого ребра — максимальная длина непрерывного под-пути
+     * с ОДИНАКОВЫМ расходом (разъяснение 1: предельная длина проверяется
+     * на участок с неизменным расходом целиком).
+     */
+    private Map<String, Double> computeSameFlowPathLengths(
+            Map<String, MergedEdge> edgeGroups,
+            List<RoutingService.Route> routes) {
+
+        Map<String, Double> result = new HashMap<>();
+
+        for (RoutingService.Route route : routes) {
+            if (route.oksFlowTph == null) continue;
+            List<GraphBuilder.Edge> edges = route.edges;
+            int n = edges.size();
+            if (n == 0) continue;
+
+            int i = 0;
+            while (i < n) {
+                String keyI = makeUndirectedKey(edges.get(i).fromId, edges.get(i).toId);
+                MergedEdge meI = edgeGroups.get(keyI);
+                if (meI == null) { i++; continue; }
+
+                double flowI = meI.totalFlowTph;
+
+                int j = i;
+                double segLen = 0;
+                while (j < n) {
+                    String keyJ = makeUndirectedKey(edges.get(j).fromId, edges.get(j).toId);
+                    MergedEdge meJ = edgeGroups.get(keyJ);
+                    if (meJ == null) break;
+                    if (Math.abs(meJ.totalFlowTph - flowI) > 1e-6) break;
+                    segLen += meJ.length;
+                    j++;
+                }
+
+                for (int k = i; k < j; k++) {
+                    String keyK = makeUndirectedKey(edges.get(k).fromId, edges.get(k).toId);
+                    result.merge(keyK, segLen, Math::max);
+                }
+
+                i = j;
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Поднимает ДУ всем рёбрам с указанным расходом до минимально
+     * подходящего по расходу и длине под-пути.
+     *
+     * @return true, если ДУ хотя бы одного ребра изменился.
+     */
+    private boolean raiseDiameterForFlow(
+            double flow,
+            Map<String, MergedEdge> edgeGroups,
+            Map<String, Double> sameFlowPathLengths) {
+
+        double maxPathLen = 0;
+        int currentDiameter = 0;
+        for (Map.Entry<String, Double> e : sameFlowPathLengths.entrySet()) {
+            MergedEdge me = edgeGroups.get(e.getKey());
+            if (me == null) continue;
+            if (Math.abs(me.totalFlowTph - flow) > 1e-6) continue;
+            if (e.getValue() > maxPathLen) maxPathLen = e.getValue();
+            if (me.diameter > currentDiameter) currentDiameter = me.diameter;
+        }
+
+        int targetD = selectDiameter(flow, maxPathLen);
+        if (targetD <= currentDiameter) return false;
+
+        boolean changed = false;
+        for (MergedEdge me : edgeGroups.values()) {
+            if (Math.abs(me.totalFlowTph - flow) > 1e-6) continue;
+            if (targetD > me.diameter) {
+                me.diameter = targetD;
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    private List<String[]> buildOrientedEdges(RoutingService.Route route) {
+        List<String[]> result = new ArrayList<>();
+        String current = route.oksId;
+        for (GraphBuilder.Edge edge : route.edges) {
+            String other;
+            if (edge.fromId.equals(current)) {
+                other = edge.toId;
+            } else if (edge.toId.equals(current)) {
+                other = edge.fromId;
+            } else {
+                other = edge.toId;
+            }
+            result.add(new String[]{current, other});
+            current = other;
+        }
+        return result;
+    }
+
     private String makeUndirectedKey(String fromId, String toId) {
         return fromId.compareTo(toId) <= 0
                 ? fromId + "|" + toId
                 : toId + "|" + fromId;
-    }
-
-    public List<CalculatedSegment> calculateSegments(List<RoutingService.Route> routes) {
-        log.info("Начинаем расчёт расходов и ДУ для {} маршрутов", routes.size());
-        List<CalculatedSegment> result = new ArrayList<>();
-
-        for (RoutingService.Route route : routes) {
-            if (route.oksFlowTph == null) continue;
-            double oksFlow = route.oksFlowTph;
-            double totalLength = route.totalLength;
-            int diameter = selectDiameter(oksFlow, totalLength);
-
-            for (GraphBuilder.Edge edge : route.edges) {
-                CalculatedSegment seg = new CalculatedSegment();
-                seg.oksId = route.oksId;
-                seg.routeEndNodeId = route.endNodeId;
-                seg.routeEndIsChamber = route.endIsChamber;
-                seg.segmentStartNodeId = edge.fromId;
-                seg.segmentEndNodeId = edge.toId;
-                seg.geometry = edge.geometry;
-                seg.length = edge.length;
-                seg.flowTph = oksFlow;
-                seg.diameter = diameter;
-                seg.layingMethod = edge.layingMethod;
-                seg.kspec = edge.kspec;
-                double costPerMeter = getCostPerMeter(diameter);
-                seg.cost = edge.length * costPerMeter * edge.kspec;
-                result.add(seg);
-            }
-        }
-        return result;
     }
 
     private static class MergedEdge {
@@ -228,6 +319,5 @@ public class FlowCalculationService {
         Set<String> oksIds = new HashSet<>();
         double totalFlowTph = 0;
         int diameter = 0;
-        double maxPathLength = 0;
     }
 }

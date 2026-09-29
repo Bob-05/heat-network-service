@@ -33,12 +33,9 @@ public class GeoJsonReaderService {
         int count = 0;
 
         try (JsonParser parser = factory.createParser(file)) {
-            // Ищем начало FeatureCollection
             while (parser.nextToken() != JsonToken.START_ARRAY) {
                 // Пропускаем всё до массива features
             }
-
-            // Читаем каждый Feature
             while (parser.nextToken() == JsonToken.START_OBJECT) {
                 JsonNode feature = objectMapper.readTree(parser);
                 GeoObject geoObject = parseFeature(feature);
@@ -60,23 +57,28 @@ public class GeoJsonReaderService {
             JsonNode properties = feature.get("properties");
             JsonNode geometry = feature.get("geometry");
 
-            if (properties == null || geometry == null) {
-                return null;
-            }
+            if (properties == null || geometry == null) return null;
 
             GeoObject geoObject = new GeoObject();
 
             JsonNode idNode = properties.get("id");
-            if (idNode != null) {
-                if (idNode.isNumber()) {
-                    geoObject.setId(String.valueOf(idNode.asLong()));
-                    geoObject.setIdType("number");
-                } else {
-                    geoObject.setId(idNode.asText());
-                    geoObject.setIdType("string");
-                }
+            if (idNode == null || idNode.isNull()) {
+                log.warn("Feature без id, object_type={}, пропускаем",
+                        properties.has("object_type") ? properties.get("object_type").asText() : "?");
+                return null;
+            }
+            if (idNode.isNumber()) {
+                geoObject.setId(String.valueOf(idNode.asLong()));
+                geoObject.setIdType("number");
+            } else {
+                geoObject.setId(idNode.asText());
+                geoObject.setIdType("string");
             }
 
+            if (!properties.has("object_type")) {
+                log.warn("Feature {} без object_type, пропускаем", geoObject.getId());
+                return null;
+            }
             geoObject.setObjectType(properties.get("object_type").asText());
 
             if (properties.has("restriction_type")) {
@@ -121,6 +123,8 @@ public class GeoJsonReaderService {
                 return parsePoint(geometry);
             case "LineString":
                 return parseLineString(geometry);
+            case "MultiLineString":
+                return parseMultiLineString(geometry);
             case "Polygon":
                 return parsePolygon(geometry);
             case "MultiPolygon":
@@ -142,24 +146,28 @@ public class GeoJsonReaderService {
 
     private LineString parseLineString(JsonNode geometry) {
         JsonNode coords = geometry.get("coordinates");
-        Coordinate[] coordinates = new Coordinate[coords.size()];
-        for (int i = 0; i < coords.size(); i++) {
-            JsonNode point = coords.get(i);
-            coordinates[i] = new Coordinate(point.get(0).asDouble(), point.get(1).asDouble());
-        }
-        LineString lineString = geometryFactory.createLineString(coordinates);
+        LineString lineString = geometryFactory.createLineString(parseCoordinateArray(coords));
         lineString.setSRID(4326);
         return lineString;
     }
 
+    private MultiLineString parseMultiLineString(JsonNode geometry) {
+        JsonNode coords = geometry.get("coordinates");
+        LineString[] lines = new LineString[coords.size()];
+        for (int i = 0; i < coords.size(); i++) {
+            lines[i] = geometryFactory.createLineString(parseCoordinateArray(coords.get(i)));
+        }
+        MultiLineString multi = geometryFactory.createMultiLineString(lines);
+        multi.setSRID(4326);
+        return multi;
+    }
+
     private Polygon parsePolygon(JsonNode geometry) {
         JsonNode coords = geometry.get("coordinates");
-        // Первое кольцо — внешняя граница
         JsonNode exteriorRing = coords.get(0);
         Coordinate[] exteriorCoords = parseCoordinateArray(exteriorRing);
         LinearRing shell = geometryFactory.createLinearRing(exteriorCoords);
 
-        // Остальные кольца — дырки (если есть)
         LinearRing[] holes = new LinearRing[coords.size() - 1];
         for (int i = 1; i < coords.size(); i++) {
             holes[i - 1] = geometryFactory.createLinearRing(parseCoordinateArray(coords.get(i)));
