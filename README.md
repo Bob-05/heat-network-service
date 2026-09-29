@@ -2,7 +2,7 @@
 
 Сервис автоматического построения вариантов подключения перспективных объектов капитального строительства (ОКС) к существующей тепловой сети.
 
-**Важно:** реконструкция существующей тепловой сети **не выполняется** (отменена в актуальном ТЗ).
+**Важно:** реконструкция существующей тепловой сети **не выполняется** (разъяснение 14).
 
 ## 🎯 Назначение
 
@@ -19,7 +19,7 @@
 | **Геометрия** | JTS (Java Topology Suite) 1.18.2 |
 | **Проекции** | proj4j 1.2.2 + proj4j-epsg 1.2.2 |
 | **Сборка** | Maven |
-| **Документация API** | Springdoc OpenAPI UI 1.7.0 |
+| **Документация API** | Springdoc OpenAPI 1.7.0 (генерирует `/v3/api-docs`) |
 | **Фронтенд** | Vanilla JS + OpenLayers 10.x (для карты) |
 | **Контейнеризация** | Docker + Docker Compose |
 
@@ -48,22 +48,16 @@ heat-network-service/
 │   │   └── VariantService.java              ← Формирование вариантов ✅
 │   │
 │   ├── geometry/                            ← Работа с JTS
-│   │   ├── CoordinateTransformer.java       ← WGS84 → UTM37N ✅
+│   │   ├── CoordinateTransformer.java       ← WGS84 ↔ UTM37N ✅
 │   │   ├── ObstacleChecker.java             ← Проверка препятствий ✅
 │   │   ├── GraphBuilder.java                ← Построение графа ✅
 │   │   └── OksPolygonIndex.java             ← Индекс полигонов ОКС ✅
 │   │
 │   ├── repository/                          ← Spring Data JPA
-│   │   ├── GeoObjectRepository.java         ✅
-│   │   ├── NewNetworkRepository.java        ✅
-│   │   ├── TieInRepository.java             ✅
-│   │   └── VariantRepository.java           ✅
+│   │   └── GeoObjectRepository.java         ✅
 │   │
-│   ├── model/                               ← JPA-сущности
-│   │   ├── GeoObject.java                   ✅
-│   │   ├── NewNetwork.java                  ✅
-│   │   ├── TieIn.java                       ✅
-│   │   └── Variant.java                     ✅
+│   ├── model/                               ← JPA-сущность
+│   │   └── GeoObject.java                   ✅
 │   │
 │   └── config/                              ← Конфигурация
 │       ├── OpenApiConfig.java               ✅
@@ -75,7 +69,7 @@ heat-network-service/
 │   ├── application.yml                      ← Настройки приложения ✅
 │   └── static/                              ← Статические ресурсы (фронтенд) ✅
 │       ├── dashboard.html                   ← Интерактивный дашборд ✅
-│       ├── swagger-custom.css               ← Кастомные стили Swagger ✅
+│       ├── DOCUMENTATION.md                 ← Полная документация ✅
 │       └── lib/
 │           └── openlayers/
 │               └── ol.js                    ← Библиотека OpenLayers (карта) ✅
@@ -103,7 +97,7 @@ heat-network-service/
 **1. Клонируйте репозиторий:**
 
 ```bash
-git clone https://github.com/Bob-05/heat-network-service.git
+git clone <ссылка-на-репозиторий>
 cd heat-network-service
 ```
 
@@ -115,7 +109,7 @@ cd heat-network-service
 **3. Запустите базу данных:**
 
 ```bash
-docker compose up -d
+docker compose up -d db
 ```
 
 Проверьте, что контейнер запущен:
@@ -133,20 +127,22 @@ docker ps
 
 Приложение запустится на `http://localhost:8080`.
 
-**5. Проверьте API:**
+**5. Откройте дашборд:**
 
-- **Дашборд:** `http://localhost:8080/dashboard.html`
-- **Swagger UI:** `http://localhost:8080/swagger-ui.html` (или `http://localhost:8080/docs-ui/` в зависимости от конфигурации)
-- **Загрузка файла:** `POST /api/v1/solve` (multipart/form-data)
-- **Тестовый эндпоинт:** `http://localhost:8080/api/v1/hello`
+```
+http://localhost:8080/dashboard.html
+```
+
+Дашборд содержит пять вкладок: **Обработка**, **Файлы**, **Карта**, **API Docs**, **Документация**.
 
 ## 📖 Документация API
 
-После запуска приложения документация доступна по адресу:
+Документация доступна двумя способами:
 
-```
-http://localhost:8080/swagger-ui.html
-```
+- **Через дашборд:** вкладка **API Docs** — встроенный рендерер спецификации с возможностью выполнить запрос.
+- **Через OpenAPI JSON:** `http://localhost:8080/v3/api-docs`.
+
+Swagger UI (`/swagger-ui.html`) намеренно отключён — вместо него в дашборде своя вкладка API Docs, которая использует ту же спецификацию.
 
 ### Основные эндпоинты
 
@@ -162,15 +158,13 @@ http://localhost:8080/swagger-ui.html
 
 ## 🖥 Интерактивный дашборд
 
-Встроенный дашборд (`/dashboard.html`) предоставляет следующие возможности:
+Дашборд (`/dashboard.html`) предоставляет:
 
-- **Обработка** — загрузка GeoJSON-файла и запуск обработки с отслеживанием статуса задачи.
+- **Обработка** — загрузка GeoJSON и запуск обработки с отслеживанием статуса.
 - **Файлы** — просмотр, скачивание, фильтрация и удаление входных и выходных файлов.
-- **Карта** — визуализация входных данных и результатов на карте (OpenLayers + OSM):
-    - отображение тепловых сетей, ОКС, камер и технических узлов;
-    - раздельная подсветка обычной и специальной прокладки;
-    - всплывающие подсказки со свойствами объектов.
+- **Карта** — визуализация входных данных и результата (OpenLayers + OSM). Раздельная подсветка обычной и специальной прокладки, всплывающие подсказки со свойствами объектов.
 - **API Docs** — встроенный рендерер OpenAPI-спецификации с возможностью выполнить запрос прямо из браузера.
+- **Документация** — этот развёрнутый справочник.
 
 ## 📐 Ключевые правила ТЗ (актуальная версия)
 
@@ -182,7 +176,7 @@ http://localhost:8080/swagger-ui.html
 - **Точка подключения ОКС** (`oks_connection_point`) — Point, с `flow_tph`.
 - **Пространственное ограничение** (`restriction`) — LineString / MultiLineString / Polygon / MultiPolygon, с `restriction_type`.
 
-**Типы ограничений:**
+### Типы ограничений (Таблица 2 ТЗ)
 
 | Тип | Правило | Мин. гориз. расстояние | Угол | Kспец |
 |---|---|---|---|---|
@@ -196,9 +190,9 @@ http://localhost:8080/swagger-ui.html
 | `tram_tracks` | Спецпроход | 1,5 м | ≥45° | 1,75 |
 | `gas_pipeline` | Спецпроход | 2,0 м | — | 1,25 |
 | `power_cable` | Спецпроход | 2,0 м | — | 1,15 |
-| `heat_network` | Спецпроход | 1,0 м | — | 1,05 |
+| `heat_network` (пересечение без врезки) | Спецпроход | 1,0 м | — | 1,05 |
 
-### Расчётные параметры (Таблица 1)
+### Расчётные параметры (Таблица 1 ТЗ)
 
 | ДУ, мм | Пропускная способность, т/ч | Предельная длина, м | Новое строительство, руб./м |
 |---|---|---|---|
@@ -221,7 +215,7 @@ http://localhost:8080/swagger-ui.html
 | 1200 | 15 012,8 | 9 288 | 428 074 |
 | 1400 | 22 501,9 | 11 276 | 683 417 |
 
-### Стоимость камер и врезок
+### Стоимость камер и врезок (Таблица 3.2 ТЗ)
 
 | Наибольший ДУ примыкающих участков | Стоимость новой камеры, руб. |
 |---|---|
@@ -250,7 +244,7 @@ S = 0,7 · (C / 25 000 000) + 0,3 · (L / 100)
 
 где `G` — расчётный расход точки подключения (`flow_tph`), т/ч.
 
-**Важно:** неподключение допускается **только если маршрут не найден**. Намеренный отказ запрещён.
+**Важно:** неподключение допускается **только если маршрут не найден**. Намеренный отказ запрещён (разъяснение 15).
 
 ## 🔄 Git Workflow
 
@@ -297,48 +291,44 @@ S = 0,7 · (C / 25 000 000) + 0,3 · (L / 100)
 
 ## 📊 Статус разработки
 
-> Проект находится на стадии активной разработки. Ниже — список того, что уже готово, и что предстоит сделать.
+> Проект находится на стадии активной разработки.
 
 ### ✅ Что уже сделано
 
 **Инфраструктура**
 - [x] Настроен проект Spring Boot 2.6.3 на Java 11
-- [x] Настроен Maven с зависимостями (Web, JPA, PostgreSQL, Hibernate Spatial, JTS, Lombok, Swagger, proj4j)
+- [x] Настроен Maven с зависимостями (Web, JPA, PostgreSQL, Hibernate Spatial, JTS, Lombok, Springdoc OpenAPI, proj4j)
 - [x] Поднят PostgreSQL 15 + PostGIS 3.3 в Docker
 - [x] Настроено подключение к БД через `application.yml`
-- [x] Подключён Swagger UI (Springdoc OpenAPI 1.7.0)
 - [x] Настроен `.gitignore`
 - [x] Создан репозиторий на GitHub
 - [x] Настроен Docker Compose для запуска БД
 
 **Модель данных**
-- [x] 4 JPA-сущности: `GeoObject`, `NewNetwork`, `TieIn`, `Variant` (обновлены под новое ТЗ)
-- [x] 4 репозитория для работы с БД
-- [x] Hibernate автоматически создаёт таблицы
+- [x] JPA-сущность `GeoObject` (актуальная модель)
+- [x] Репозиторий `GeoObjectRepository`
 
 **API-слой**
-- [x] `HelloController` — тестовый эндпоинт
-- [x] `GeoJsonReaderController` — тестовое чтение
 - [x] `TaskController` — `POST /solve`, `GET /status/{taskId}`, `GET /result/{taskId}`
 - [x] `FileController` — управление загруженными и результирующими файлами
-- [x] DTO для запросов и ответов (`TaskStatus`, `FileInfo`)
+- [x] DTO для ответов (`TaskStatus`, `FileInfo`)
 - [x] Асинхронная обработка файлов (`@Async`)
 
 **Потоковая обработка**
-- [x] `GeoJsonReaderService` — чтение GeoJSON (все типы геометрии)
-- [x] `GeoJsonWriterService` — запись GeoJSON (обновлён под новое ТЗ)
+- [x] `GeoJsonReaderService` — чтение GeoJSON (Point, LineString, MultiLineString, Polygon, MultiPolygon)
+- [x] `GeoJsonWriterService` — запись GeoJSON (heat_network, heat_chamber, technical_node, variant_summary)
 - [x] `TaskService` — управление задачами
 
 **Геометрия**
-- [x] `CoordinateTransformer` — WGS84 → UTM37N
-- [x] `ObstacleChecker` — проверка препятствий
+- [x] `CoordinateTransformer` — WGS84 ↔ UTM37N (со всеми типами геометрии)
+- [x] `ObstacleChecker` — проверка препятствий (расстояния, углы, K_спец)
 - [x] `GraphBuilder` — построение графа
 - [x] `OksPolygonIndex` — индекс полигонов ОКС
 
 **Бизнес-логика**
-- [x] `RoutingService` — построение маршрутов
-- [x] `FlowCalculationService` — расходы и диаметры
-- [x] `CostService` — расчёт стоимости
+- [x] `RoutingService` — построение маршрутов (Дейкстра)
+- [x] `FlowCalculationService` — расходы, ДУ, предельная длина
+- [x] `CostService` — расчёт стоимости и штрафов
 - [x] `TieInService` — определение врезок и камер
 - [x] `VariantService` — формирование и ранжирование вариантов
 
@@ -356,28 +346,20 @@ S = 0,7 · (C / 25 000 000) + 0,3 · (L / 100)
 - [ ] `Dockerfile` для приложения
 - [ ] Объединение app и db в одном `docker-compose.yml`
 
-**Документация**
-- [ ] Описание алгоритма трассировки
-- [ ] Описание обработки ОКС без маршрута
-- [ ] Описание выходных данных
-- [ ] Описание границ применения
-
-**Тестирование**
-- [ ] Модульные тесты для ключевых сервисов
-- [ ] Интеграционные тесты полного пайплайна
+**Дополнительный режим**
+- [ ] Режим с учётом глубины (раздел 5 ТЗ) — опционально, может формировать отдельный набор вариантов
 
 ---
 
-## 📅 План разработки (ориентировочно)
+## 📅 План разработки
 
 ### Неделя 1 (15–21 сентября)
-- [x] Инфраструктура (Java 11, Spring Boot, PostgreSQL, Docker)
+- [x] Инфраструктура
 - [x] JPA-сущности и репозитории
 - [x] `GeoJsonReaderService`
 - [x] `GeoJsonWriterService`
 - [x] `CoordinateTransformer`
-- [x] `TaskController` (API)
-- [x] Обновление под новое ТЗ (реконструкция отменена)
+- [x] `TaskController`
 
 ### Неделя 2 (22–29 сентября)
 - [x] `ObstacleChecker`
