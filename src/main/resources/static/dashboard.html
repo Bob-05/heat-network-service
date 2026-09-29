@@ -653,6 +653,19 @@
         .params-table .required { color: var(--danger); font-size: 11px; font-weight: 700; }
         .params-table .opt { color: var(--muted); font-size: 11px; }
 
+        .p-loc {
+            display: inline-block;
+            font-size: 11px;
+            color: var(--muted);
+            background: var(--bg);
+            padding: 1px 6px;
+            border-radius: 6px;
+            margin-left: 6px;
+            font-family: ui-monospace, monospace;
+        }
+        .pdesc-example { color: var(--muted); font-size: 12.5px; }
+        .pdesc-example code { background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+
         .try-form {
             display: flex; flex-direction: column; gap: 12px;
             background: var(--bg); padding: 16px; border-radius: var(--radius-sm);
@@ -677,6 +690,14 @@
         .field input[type=file] {
             padding: 8px; cursor: pointer;
             background: #fff; font-size: 13px;
+        }
+        .field-hint {
+            font-size: 12px;
+            color: var(--muted);
+            margin: -2px 0 2px;
+        }
+        .field-hint code {
+            background: var(--bg); padding: 1px 5px; border-radius: 4px;
         }
 
         .response {
@@ -932,6 +953,68 @@
             word-break: break-word;
         }
 
+        /* ===== Markdown документация ===== */
+        .md-docs-content {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 28px 36px 40px;
+            box-shadow: var(--shadow-sm);
+            line-height: 1.7;
+            color: var(--text);
+            overflow-wrap: break-word;
+        }
+        .md-docs-content .md-h1 { font-size: 26px; margin: 8px 0 16px; color: var(--primary-dark); }
+        .md-docs-content .md-h2 {
+            font-size: 22px; margin: 32px 0 12px; padding-bottom: 8px;
+            border-bottom: 1px solid var(--border); color: var(--primary-dark);
+            scroll-margin-top: 160px;
+        }
+        .md-docs-content .md-h3 {
+            font-size: 18px; margin: 24px 0 10px; color: var(--text);
+            scroll-margin-top: 160px;
+        }
+        .md-docs-content .md-h4 {
+            font-size: 16px; margin: 18px 0 8px;
+            scroll-margin-top: 160px;
+        }
+        .md-docs-content .md-p { margin: 8px 0; font-size: 14px; }
+        .md-docs-content .md-ul { margin: 8px 0 8px 22px; padding: 0; }
+        .md-docs-content .md-ul li { font-size: 14px; margin: 4px 0; }
+        .md-docs-content .md-code {
+            background: var(--bg); padding: 1px 6px; border-radius: 4px;
+            font-family: ui-monospace, monospace; font-size: 13px;
+            color: var(--primary-dark);
+        }
+        .md-docs-content .md-pre {
+            background: #0d1117; color: #c9d1d9;
+            padding: 14px 18px; border-radius: var(--radius-sm);
+            overflow-x: auto; margin: 12px 0;
+            font-size: 13px; line-height: 1.55;
+        }
+        .md-docs-content .md-pre code {
+            font-family: ui-monospace, monospace;
+            background: transparent; padding: 0; color: inherit;
+        }
+        .md-docs-content .md-hr {
+            border: none; border-top: 1px solid var(--border); margin: 24px 0;
+        }
+        .md-docs-content .md-table {
+            width: 100%; border-collapse: collapse; margin: 12px 0;
+            font-size: 13.5px; border-radius: var(--radius-sm); overflow: hidden;
+        }
+        .md-docs-content .md-table th {
+            background: #eef1f4; text-align: left; padding: 9px 12px;
+            font-size: 12px; text-transform: uppercase; letter-spacing: .4px;
+            color: var(--muted); border-bottom: 1px solid var(--border);
+        }
+        .md-docs-content .md-table td {
+            padding: 8px 12px; border-bottom: 1px solid var(--border);
+            vertical-align: top;
+        }
+        .md-docs-content a { color: var(--primary); text-decoration: none; }
+        .md-docs-content a:hover { text-decoration: underline; }
+
         /* ===== Responsive ===== */
         @media (max-width: 860px) {
             header { padding: 20px; }
@@ -942,6 +1025,7 @@
             .grid { grid-template-columns: 1fr; }
             .endpoint-desc { display: none; }
             .map-container { height: 60vh; }
+            .md-docs-content { padding: 20px; }
         }
     </style>
 </head>
@@ -998,6 +1082,14 @@
                 <polyline points="14 2 14 8 20 8"/>
             </svg>
             API Docs
+        </button>
+        <button class="tab" id="tab-documentation" onclick="switchTab('documentation')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+            </svg>
+            Документация
         </button>
     </div>
 </div>
@@ -1330,6 +1422,26 @@
         </div>
     </div>
 
+    <!-- ================= Вкладка «Документация» ================= -->
+    <div class="tab-panel" id="panel-documentation">
+        <div class="docs-layout">
+            <aside class="docs-sidebar" id="mdDocsSidebar">
+                <div class="sidebar-title">Содержание</div>
+                <nav id="mdDocsNav">
+                    <div class="loading" style="padding:20px;text-align:left">
+                        <div class="spinner" style="width:16px;height:16px;border-width:2px"></div>
+                    </div>
+                </nav>
+            </aside>
+            <div id="mdDocsContent" class="md-docs-content">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <div>Загрузка документации…</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </main>
 
 <div class="toast" id="toast"></div>
@@ -1353,6 +1465,10 @@
             window.__docsLoaded = true;
             loadDocs();
         }
+        if (name === 'documentation' && !window.__mdDocsLoaded) {
+            window.__mdDocsLoaded = true;
+            loadFullDocs();
+        }
         if (name === 'map') {
             setTimeout(() => {
                 ensureMap();
@@ -1365,6 +1481,7 @@
     window.addEventListener('DOMContentLoaded', () => {
         const h = window.location.hash.replace('#', '');
         if (h === 'docs') switchTab('docs');
+        else if (h === 'documentation') switchTab('documentation');
         else if (h === 'files') switchTab('files');
         else if (h === 'map') switchTab('map');
         else switchTab('solve');
@@ -1373,6 +1490,7 @@
     window.addEventListener('hashchange', () => {
         const h = window.location.hash.replace('#', '');
         if (h === 'docs') switchTab('docs');
+        else if (h === 'documentation') switchTab('documentation');
         else if (h === 'files') switchTab('files');
         else if (h === 'map') switchTab('map');
         else if (h === 'solve') switchTab('solve');
@@ -1935,6 +2053,35 @@
         }
     };
 
+    const PARAM_EXAMPLES = {
+        '/api/v1/solve': {
+            file: 'test_input.geojson'
+        },
+        '/api/v1/status/{taskId}': {
+            taskId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
+        },
+        '/api/v1/result/{taskId}': {
+            taskId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
+        },
+        '/api/v1/files/{type}': {
+            type: 'uploads'
+        },
+        '/api/v1/files/{type}/{fileName}': {
+            type: 'uploads',
+            fileName: '1234567890_test_input.geojson'
+        },
+        '/api/v1/files/download/{type}/{fileName}': {
+            type: 'uploads',
+            fileName: '1234567890_test_input.geojson'
+        }
+    };
+
+    const PARAM_DESCRIPTIONS = {
+        'type': 'Тип каталога. Допустимо: <code>uploads</code> или <code>results</code>',
+        'fileName': 'Имя файла, как оно отображается во вкладке «Файлы». Можно скопировать из списка.',
+        'taskId': 'UUID задачи, полученный при загрузке файла в <code>/api/v1/solve</code>'
+    };
+
     function slugify(s) {
         return s.toLowerCase()
                 .replace(/[^a-z0-9а-я]+/gi, '-')
@@ -2094,21 +2241,38 @@
         if (params.length) {
             html += `<div class="section-label">${RU.sections.parameters}</div>
                 <table class="params-table"><thead><tr>
-                    <th>${RU.fields.name}</th>
-                    <th>${RU.fields.in}</th>
-                    <th>${RU.fields.type}</th>
-                    <th>${RU.fields.description}</th>
+                    <th>Что вводить</th>
+                    <th>Тип</th>
+                    <th>Описание</th>
                 </tr></thead><tbody>`;
             for (const p of params) {
                 const schema = deref(p.schema) || {};
+                let typeLabel = schema.type || '—';
+                if (schema.format === 'binary') typeLabel = 'файл .geojson';
+                else if (schema.format === 'int64') typeLabel = 'целое (int64)';
+                else if (schema.format === 'int32') typeLabel = 'целое (int32)';
+
+                const loc = p.in === 'path' ? 'path'
+                          : p.in === 'query' ? 'query'
+                          : p.in === 'header' ? 'header'
+                          : p.in;
+                const example = p.example ?? schema.example;
+                const descHtml =
+                    escapeHtml(p.description || '') +
+                    (example !== undefined && example !== null
+                        ? ` <span class="pdesc-example">Например: <code>${escapeHtml(String(example))}</code></span>`
+                        : '');
+
                 html += `<tr>
-                    <td><code>${escapeHtml(p.name)}</code>
+                    <td>
+                        <code>${escapeHtml(p.name)}</code>
+                        <span class="p-loc">${escapeHtml(loc)}</span>
                         ${p.required
                             ? `<span class="required">${RU.fields.required}</span>`
-                            : `<span class="opt">${RU.fields.optional}</span>`}</td>
-                    <td>${escapeHtml(p.in)}</td>
-                    <td class="type">${escapeHtml(schema.type || '—')}</td>
-                    <td>${escapeHtml(p.description || '')}</td>
+                            : `<span class="opt">${RU.fields.optional}</span>`}
+                    </td>
+                    <td class="type">${escapeHtml(typeLabel)}</td>
+                    <td>${descHtml}</td>
                 </tr>`;
             }
             html += `</tbody></table>`;
@@ -2157,7 +2321,7 @@
         for (const [name, rawProp] of Object.entries(schema.properties)) {
             const prop = deref(rawProp);
             const isBinary = prop.type === 'string' && prop.format === 'binary';
-            const typeLabel = isBinary ? 'файл' : (prop.type || '—');
+            const typeLabel = isBinary ? 'файл .geojson' : (prop.type || '—');
             html += `<tr>
                 <td><code>${escapeHtml(name)}</code></td>
                 <td class="type">${escapeHtml(typeLabel)}</td>
@@ -2175,13 +2339,24 @@
             const schema = deref(p.schema) || {};
             const type = schema.type || 'string';
             const inputType = (type === 'number' || type === 'integer') ? 'number' : 'text';
+
+            const example =
+                PARAM_EXAMPLES[path]?.[p.name] ??
+                p.example ??
+                schema.example ??
+                '';
+
+            const hint = PARAM_DESCRIPTIONS[p.name] || p.description || '';
+
             html += `<div class="field">
-                <label>${escapeHtml(p.name)} (${p.in})
+                <label>${escapeHtml(p.name)}
+                    <span class="p-loc">${escapeHtml(p.in)}</span>
                     ${p.required ? '<span class="req">*</span>' : ''}</label>
+                ${hint ? `<div class="field-hint">${hint}</div>` : ''}
                 <input type="${inputType}"
                        data-param="${escapeHtml(p.name)}"
                        data-in="${p.in}"
-                       placeholder="${escapeHtml(schema.example || p.example || '')}">
+                       placeholder="${escapeHtml(String(example))}">
             </div>`;
         }
 
@@ -2220,7 +2395,7 @@
         }
 
         html += `<div style="display:flex;gap:8px;margin-top:4px">
-            <button class="btn btn-primary" onclick="executeOp('${opId}')">
+            <button class="btn btn-primary" id="exec-btn-${opId}" onclick="executeOp('${opId}')">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
                      stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <polygon points="5 3 19 12 5 21 5 3"/>
@@ -2258,6 +2433,17 @@
         const form = document.getElementById('form-' + opId);
         const ep = findEndpointByOpId(opId);
         if (!ep) return;
+
+        const btn = document.getElementById('exec-btn-' + opId);
+        const originalBtnHtml = btn ? btn.innerHTML : '';
+        const setBusy = (busy, text) => {
+            if (!btn) return;
+            btn.disabled = busy;
+            btn.innerHTML = busy
+                ? `<span class="spinner" style="width:14px;height:14px;border-width:2px;margin:0 6px 0 0"></span>${escapeHtml(text || 'Выполняется…')}`
+                : originalBtnHtml;
+        };
+        setBusy(true, 'Отправка…');
 
         let url = ep.path;
         const query = [];
@@ -2301,6 +2487,7 @@
                     body = bodyInput.value;
                     headers['Content-Type'] = 'application/json';
                 } catch (e) {
+                    setBusy(false);
                     showResponse(opId, 0, 'Ошибка JSON',
                         'Тело не является валидным JSON: ' + e.message);
                     return;
@@ -2319,27 +2506,153 @@
                 headers, body
             });
             const t1 = performance.now();
+            const timeMs = Math.round(t1 - t0);
+
+            const contentType = res.headers.get('Content-Type') || '';
+            const contentDisposition = res.headers.get('Content-Disposition') || '';
+            const isAttachment = /attachment/i.test(contentDisposition) ||
+                /application\/geo\+json|application\/octet-stream/i.test(contentType);
+
+            if (isAttachment && res.ok) {
+                const blob = await res.blob();
+                const filename = extractFilename(contentDisposition) ||
+                    guessFilename(contentType, url) || 'file';
+                const blobUrl = URL.createObjectURL(blob);
+                showResponse(opId, res.status, res.statusText,
+                    `Файл готов к скачиванию: ${filename} (${formatBytes(blob.size)})`,
+                    timeMs, { downloadUrl: blobUrl, filename, size: blob.size });
+                setBusy(false);
+                return;
+            }
+
             const text = await res.text();
+
+            if (/\/api\/v1\/solve\/?$/.test(ep.path) && res.ok) {
+                try {
+                    const json = JSON.parse(text);
+                    if (json.taskId) {
+                        showSolveProgress(opId, json.taskId, json.message);
+                        setBusy(false);
+                        return;
+                    }
+                } catch { /* ignore */ }
+            }
+
             showResponse(opId, res.status, res.statusText,
-                         prettify(text), Math.round(t1 - t0));
+                prettify(text), timeMs);
+            setBusy(false);
         } catch (e) {
             const t1 = performance.now();
-            showResponse(opId, 0, 'Сетевая ошибка', e.message, Math.round(t1 - t0));
+            showResponse(opId, 0, 'Сетевая ошибка', e.message,
+                Math.round(t1 - t0));
+            setBusy(false);
         }
     }
 
-    function showResponse(opId, status, statusText, body, time) {
+    function extractFilename(disposition) {
+        if (!disposition) return null;
+        const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
+        return m ? decodeURIComponent(m[1]) : null;
+    }
+
+    function guessFilename(contentType, url) {
+        if (/geo\+json/.test(contentType)) return 'result.geojson';
+        if (/octet-stream/.test(contentType)) {
+            const last = url.split('/').pop();
+            return last || 'file.bin';
+        }
+        return null;
+    }
+
+    function formatBytes(bytes) {
+        if (bytes < 1024) return bytes + ' Б';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' КБ';
+        return (bytes / 1024 / 1024).toFixed(2) + ' МБ';
+    }
+
+    async function showSolveProgress(opId, taskId, initialMessage) {
         const resp = document.getElementById('resp-' + opId);
         const statusEl = document.getElementById('status-' + opId);
         const statusTextEl = document.getElementById('statusText-' + opId);
         const timeEl = document.getElementById('time-' + opId);
         const bodyEl = document.getElementById('body-' + opId);
+
+        resp.style.display = 'block';
+        statusEl.textContent = '202';
+        statusEl.className = 'status ok';
+        statusTextEl.textContent = 'Обработка запущена';
+        timeEl.textContent = '';
+
+        const render = (state, message) => {
+            bodyEl.innerHTML =
+                `<div style="padding:14px 16px;line-height:1.6">` +
+                `<div><span style="color:#8b949e">ID задачи:</span> <code style="background:#161b22;padding:2px 6px;border-radius:4px">${escapeHtml(taskId)}</code></div>` +
+                `<div><span style="color:#8b949e">Состояние:</span> <b>${escapeHtml(state)}</b></div>` +
+                `<div><span style="color:#8b949e">Сообщение:</span> ${escapeHtml(message || '—')}</div>` +
+                `</div>`;
+        };
+
+        render('PROCESSING', initialMessage || 'Файл принят, обработка запущена');
+        statusEl.textContent = '202';
+        statusEl.className = 'status ok';
+
+        while (true) {
+            await new Promise(r => setTimeout(r, 1500));
+            try {
+                const r = await fetch('/api/v1/status/' + encodeURIComponent(taskId));
+                if (!r.ok) { render('ERROR', 'Не удалось получить статус'); break; }
+                const data = await r.json();
+                render(data.state, data.message);
+                if (data.state === 'DONE') {
+                    statusEl.textContent = '200';
+                    statusTextEl.textContent = 'Готово';
+                    const link =
+                        `<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;padding:0 16px 14px">` +
+                        `<a class="btn btn-success" href="/api/v1/result/${encodeURIComponent(taskId)}" download>` +
+                        `Скачать результат</a>` +
+                        `<button class="btn" onclick="showResultOnMap('${encodeURIComponent(taskId)}')">Показать на карте</button>` +
+                        `</div>`;
+                    bodyEl.innerHTML += link;
+                    break;
+                }
+                if (data.state === 'ERROR') {
+                    statusEl.textContent = '500';
+                    statusEl.className = 'status err';
+                    statusTextEl.textContent = 'Ошибка';
+                    break;
+                }
+            } catch {
+                render('PROCESSING', 'Проверка статуса…');
+            }
+        }
+    }
+
+    function showResponse(opId, status, statusText, body, time, downloadInfo) {
+        const resp = document.getElementById('resp-' + opId);
+        const statusEl = document.getElementById('status-' + opId);
+        const statusTextEl = document.getElementById('statusText-' + opId);
+        const timeEl = document.getElementById('time-' + opId);
+        const bodyEl = document.getElementById('body-' + opId);
+
         resp.style.display = 'block';
         statusEl.textContent = status || 'ERR';
         statusEl.className = 'status ' + ((status >= 200 && status < 300) ? 'ok' : 'err');
         statusTextEl.textContent = statusText || '';
         timeEl.textContent = time != null ? time + ' ms' : '';
-        bodyEl.textContent = body;
+
+        if (downloadInfo) {
+            bodyEl.innerHTML =
+                `<div style="padding:14px 16px;color:#c9d1d9;line-height:1.6">` +
+                `<div>${escapeHtml(body)}</div>` +
+                `<a class="btn btn-success" style="margin-top:12px;display:inline-flex" ` +
+                `href="${downloadInfo.downloadUrl}" download="${escapeHtml(downloadInfo.filename)}">` +
+                `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">` +
+                `<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>` +
+                `</svg> Скачать ${escapeHtml(downloadInfo.filename)}</a>` +
+                `</div>`;
+        } else {
+            bodyEl.textContent = body;
+        }
     }
 
     function prettify(text) {
@@ -2426,7 +2739,205 @@
     }
 
     /* =====================================================================
-       Часть 4. Карта (OpenLayers)
+       Часть 4. Полная документация (DOCUMENTATION.md)
+       ===================================================================== */
+    const DOC_URL = '/DOCUMENTATION.md';
+
+    async function loadFullDocs() {
+        try {
+            const res = await fetch(DOC_URL);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const mdText = await res.text();
+            renderFullDocs(mdText);
+        } catch (e) {
+            document.getElementById('mdDocsContent').innerHTML =
+                `<div class="empty">
+                    <h3 style="color:var(--danger)">Не удалось загрузить DOCUMENTATION.md</h3>
+                    <p>${escapeHtml(e.message)}</p>
+                    <p style="margin-top:12px;font-size:13px">
+                        Убедитесь, что файл <code>DOCUMENTATION.md</code> лежит
+                        в <code>src/main/resources/static/</code> и доступен по
+                        <code>/DOCUMENTATION.md</code>.
+                    </p>
+                </div>`;
+        }
+    }
+
+    function renderFullDocs(mdText) {
+        const html = renderMarkdown(mdText);
+        const container = document.getElementById('mdDocsContent');
+        container.innerHTML = html;
+
+        // Собираем боковое оглавление по h2
+        const nav = document.getElementById('mdDocsNav');
+        const headings = container.querySelectorAll('h2');
+        let navHtml = '';
+        headings.forEach((h) => {
+            navHtml += `<a href="#${h.id}" data-md-anchor="${h.id}">${escapeHtml(h.textContent)}</a>`;
+        });
+        nav.innerHTML = navHtml || '<div style="color:var(--muted);font-size:13px;padding:8px">Разделы не найдены</div>';
+
+        // Клик по боковой навигации — плавный скролл, без изменения hash
+        nav.querySelectorAll('a').forEach(a => {
+            a.addEventListener('click', e => {
+                e.preventDefault();
+                const id = a.getAttribute('data-md-anchor');
+                const el = document.getElementById(id);
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                nav.querySelectorAll('a').forEach(x => x.classList.remove('active'));
+                a.classList.add('active');
+            });
+        });
+
+        // Клик по анкорам внутри самого markdown (оглавление в документе) —
+        // тоже плавный скролл без открытия новой вкладки и без смены URL
+        container.querySelectorAll('a[data-md-anchor-link]').forEach(a => {
+            a.addEventListener('click', e => {
+                e.preventDefault();
+                const id = a.getAttribute('data-md-anchor-link');
+                const el = document.getElementById(id);
+                if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                } else {
+                    console.warn('Anchor not found:', id);
+                }
+            });
+        });
+    }
+
+    function slugifyMd(text) {
+        return String(text)
+            .toLowerCase()
+            .replace(/<[^>]+>/g, '')
+            .replace(/[`*_~]/g, '')
+            .replace(/[^\p{L}\p{N}\s-]/gu, '')
+            .trim()
+            .replace(/\s+/g, '-');
+    }
+
+    function renderMarkdown(mdText) {
+        const lines = mdText.split(/\r?\n/);
+        let html = '';
+        let inCode = false;
+        let codeBuffer = [];
+        let inList = false;
+        let inTable = false;
+        let tableRows = [];
+        const renderedHeadingIds = new Set();
+
+        const flushList = () => { if (inList) { html += '</ul>'; inList = false; } };
+        const flushTable = () => {
+            if (inTable) {
+                const header = tableRows[0] || [];
+                const body = tableRows.slice(1);
+                html += '<table class="md-table"><thead><tr>' +
+                    header.map(c => `<th>${c}</th>`).join('') +
+                    '</tr></thead><tbody>';
+                for (const row of body) {
+                    html += '<tr>' + row.map(c => `<td>${c}</td>`).join('') + '</tr>';
+                }
+                html += '</tbody></table>';
+                tableRows = [];
+                inTable = false;
+            }
+        };
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+
+            // Код-блок
+            if (line.startsWith('```')) {
+                if (inCode) {
+                    html += `<pre class="md-pre"><code>${escapeHtml(codeBuffer.join('\n'))}</code></pre>`;
+                    codeBuffer = []; inCode = false;
+                } else {
+                    flushList(); flushTable();
+                    inCode = true;
+                }
+                continue;
+            }
+            if (inCode) { codeBuffer.push(line); continue; }
+
+            // Таблица
+            if (/^\s*\|.*\|\s*$/.test(line)) {
+                const cells = line.trim().slice(1, -1).split('|').map(c => c.trim());
+                if (/^[\s\-:|]+$/.test(cells.join(''))) {
+                    continue;
+                }
+                if (!inTable) { flushList(); inTable = true; tableRows = []; }
+                tableRows.push(cells.map(c => inlineMd(c)));
+                continue;
+            } else {
+                flushTable();
+            }
+
+            // Заголовки
+            const hMatch = line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/);
+            if (hMatch) {
+                flushList();
+                const level = hMatch[1].length;
+                const rawText = hMatch[2];
+                const plainText = rawText.replace(/[`*_~]/g, '');
+                let id = slugifyMd(plainText);
+                if (!id) id = 'md-h-' + i;
+                let uniqueId = id;
+                let n = 1;
+                while (renderedHeadingIds.has(uniqueId)) {
+                    uniqueId = id + '-' + (++n);
+                }
+                renderedHeadingIds.add(uniqueId);
+
+                html += `<h${level} id="${uniqueId}" class="md-h md-h${level}">${inlineMd(rawText)}</h${level}>`;
+                continue;
+            }
+
+            // Маркированный список
+            const ulMatch = line.match(/^\s*[-*+]\s+(.+)$/);
+            if (ulMatch) {
+                if (!inList) { html += '<ul class="md-ul">'; inList = true; }
+                html += `<li>${inlineMd(ulMatch[1])}</li>`;
+                continue;
+            } else {
+                flushList();
+            }
+
+            // Горизонтальная линия
+            if (/^\s*[-*_]{3,}\s*$/.test(line)) {
+                html += '<hr class="md-hr">';
+                continue;
+            }
+
+            // Пустая строка
+            if (line.trim() === '') continue;
+
+            // Параграф
+            html += `<p class="md-p">${inlineMd(line)}</p>`;
+        }
+
+        flushList(); flushTable();
+        if (inCode) {
+            html += `<pre class="md-pre"><code>${escapeHtml(codeBuffer.join('\n'))}</code></pre>`;
+        }
+        return html;
+    }
+
+    function inlineMd(text) {
+        let s = escapeHtml(text);
+        s = s.replace(/`([^`]+)`/g, '<code class="md-code">$1</code>');
+        s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        s = s.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>');
+        s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, label, url) => {
+            // Внутренние анкоры (#anchor) — без target="_blank"
+            if (url.startsWith('#')) {
+                return `<a href="${url}" data-md-anchor-link="${url.slice(1)}">${label}</a>`;
+            }
+            return `<a href="${url}" target="_blank" rel="noopener">${label}</a>`;
+        });
+        return s;
+    }
+
+    /* =====================================================================
+       Часть 5. Карта (OpenLayers)
        ===================================================================== */
 
     let olMap = null;
