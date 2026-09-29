@@ -181,7 +181,6 @@
             background: #1f7d3a; border-color: #1f7d3a; color: #fff;
         }
 
-        /* Кнопка-ссылка «Скачать результат» в заблокированном состоянии */
         .btn[aria-disabled="true"],
         .btn[aria-disabled="true"]:hover {
             opacity: 0.45;
@@ -819,7 +818,6 @@
             box-shadow: 0 0 0 1px var(--border);
         }
 
-        /* Кнопки масштаба OpenLayers — крупнее и заметнее */
         .ol-zoom {
             top: 12px;
             left: 12px;
@@ -854,7 +852,6 @@
             transform: translateY(0);
         }
 
-        /* Кнопка поворота карты */
         .ol-rotate {
             top: 12px;
             right: 12px;
@@ -876,12 +873,10 @@
             border-color: var(--primary);
         }
 
-        /* Скрыть атрибуцию OSM */
         .ol-attribution {
             display: none !important;
         }
 
-        /* Стили для попапа OpenLayers */
         .ol-popup {
             position: absolute;
             background-color: #fff;
@@ -1100,7 +1095,6 @@
     <div class="tab-panel active" id="panel-solve">
 
         <div class="solve-grid">
-            <!-- Слева: загрузка -->
             <div class="solve-card">
                 <h2>
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="none"
@@ -1150,7 +1144,6 @@
                 </div>
             </div>
 
-            <!-- Справа: статус -->
             <div class="solve-card">
                 <h2>
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="none"
@@ -1366,26 +1359,24 @@
             </div>
         </div>
 
+        <!--
+            Легенда приведена в соответствие с разделом 7.1 ТЗ:
+            в результате могут быть только heat_network (base/special),
+            heat_chamber и technical_node. Пункты про реконструкцию
+            и входные ОКС-точки убраны — их в выходном файле нет.
+        -->
         <div class="map-legend">
             <div class="map-legend-item">
                 <span class="map-legend-line" style="background:#1f6feb"></span>
-                Теплосеть (heat_network)
+                Новая теплосеть (base)
             </div>
             <div class="map-legend-item">
                 <span class="map-legend-line" style="background:#fca130"></span>
-                Специальная прокладка
-            </div>
-            <div class="map-legend-item">
-                <span class="map-legend-line" style="background:#8250df"></span>
-                Реконструкция
-            </div>
-            <div class="map-legend-item">
-                <span class="map-legend-dot" style="background:#cf222e"></span>
-                ОКС
+                Специальный проход (special)
             </div>
             <div class="map-legend-item">
                 <span class="map-legend-dot" style="background:#bf8700"></span>
-                Камера
+                Новая камера
             </div>
             <div class="map-legend-item">
                 <span class="map-legend-dot" style="background:#8250df"></span>
@@ -1497,7 +1488,7 @@
     });
 
     /* =====================================================================
-       Часть 1. Логика дашборда файлов
+       Часть 1. Дашборд файлов
        ===================================================================== */
     const API = '/api/v1/files';
 
@@ -1828,7 +1819,7 @@
     setInterval(refreshAll, 10000);
 
     /* =====================================================================
-       Часть 2. Логика вкладки «Обработка» (solve)
+       Часть 2. Обработка
        ===================================================================== */
 
     let selectedFile = null;
@@ -2022,7 +2013,7 @@
     }
 
     /* =====================================================================
-       Часть 3. Рендерер OpenAPI для вкладки API Docs
+       Часть 3. Рендерер OpenAPI
        ===================================================================== */
 
     const API_DOCS = '/v3/api-docs';
@@ -2054,18 +2045,10 @@
     };
 
     const PARAM_EXAMPLES = {
-        '/api/v1/solve': {
-            file: 'test_input.geojson'
-        },
-        '/api/v1/status/{taskId}': {
-            taskId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
-        },
-        '/api/v1/result/{taskId}': {
-            taskId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
-        },
-        '/api/v1/files/{type}': {
-            type: 'uploads'
-        },
+        '/api/v1/solve': { file: 'test_input.geojson' },
+        '/api/v1/status/{taskId}': { taskId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' },
+        '/api/v1/result/{taskId}': { taskId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' },
+        '/api/v1/files/{type}': { type: 'uploads' },
         '/api/v1/files/{type}/{fileName}': {
             type: 'uploads',
             fileName: '1234567890_test_input.geojson'
@@ -2739,7 +2722,7 @@
     }
 
     /* =====================================================================
-       Часть 4. Полная документация (DOCUMENTATION.md)
+       Часть 4. Полная документация
        ===================================================================== */
     const DOC_URL = '/DOCUMENTATION.md';
 
@@ -2768,7 +2751,6 @@
         const container = document.getElementById('mdDocsContent');
         container.innerHTML = html;
 
-        // Собираем боковое оглавление по h2
         const nav = document.getElementById('mdDocsNav');
         const headings = container.querySelectorAll('h2');
         let navHtml = '';
@@ -2783,7 +2765,6 @@
             });
         };
 
-        // Клик по боковой навигации — плавный скролл + активный пункт
         nav.querySelectorAll('a').forEach(a => {
             a.addEventListener('click', e => {
                 e.preventDefault();
@@ -2794,8 +2775,6 @@
             });
         });
 
-        // Клик по анкорам внутри самого markdown — плавный скролл
-        // + синхронизация активного пункта в боковой навигации
         container.querySelectorAll('a[data-md-anchor-link]').forEach(a => {
             a.addEventListener('click', e => {
                 e.preventDefault();
@@ -2804,20 +2783,16 @@
                 if (el) {
                     el.scrollIntoView({ behavior: 'smooth', block: 'start' });
                     setActiveAnchor(id);
-                } else {
-                    console.warn('Anchor not found:', id);
                 }
             });
         });
 
-        // Опционально: подсвечивать активный раздел при обычном скролле.
-        // Используем IntersectionObserver — он дешевле, чем scroll-обработчик.
         if (window.__mdScrollObserver) {
             window.__mdScrollObserver.disconnect();
             window.__mdScrollObserver = null;
         }
         if ('IntersectionObserver' in window && headings.length > 0) {
-            const visible = new Map(); // id -> ratio
+            const visible = new Map();
 
             const observer = new IntersectionObserver((entries) => {
                 for (const entry of entries) {
@@ -2827,7 +2802,6 @@
                         visible.delete(entry.target.id);
                     }
                 }
-                // Выбираем тот, что выше всех в документе среди видимых
                 let topMost = null;
                 let topY = Infinity;
                 for (const h of headings) {
@@ -2841,7 +2815,6 @@
                 }
                 if (topMost) setActiveAnchor(topMost);
             }, {
-                // Учитываем высоту двух sticky-панелей (header + tabs)
                 rootMargin: '-160px 0px -60% 0px',
                 threshold: [0, 0.25, 0.5, 0.75, 1]
             });
@@ -2850,7 +2823,6 @@
             window.__mdScrollObserver = observer;
         }
 
-        // Начальная установка активного пункта — первый раздел
         if (headings.length > 0) {
             setActiveAnchor(headings[0].id);
         }
@@ -2896,7 +2868,6 @@
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
 
-            // Код-блок
             if (line.startsWith('```')) {
                 if (inCode) {
                     html += `<pre class="md-pre"><code>${escapeHtml(codeBuffer.join('\n'))}</code></pre>`;
@@ -2909,7 +2880,6 @@
             }
             if (inCode) { codeBuffer.push(line); continue; }
 
-            // Таблица
             if (/^\s*\|.*\|\s*$/.test(line)) {
                 const cells = line.trim().slice(1, -1).split('|').map(c => c.trim());
                 if (/^[\s\-:|]+$/.test(cells.join(''))) {
@@ -2922,7 +2892,6 @@
                 flushTable();
             }
 
-            // Заголовки
             const hMatch = line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/);
             if (hMatch) {
                 flushList();
@@ -2942,7 +2911,6 @@
                 continue;
             }
 
-            // Маркированный список
             const ulMatch = line.match(/^\s*[-*+]\s+(.+)$/);
             if (ulMatch) {
                 if (!inList) { html += '<ul class="md-ul">'; inList = true; }
@@ -2952,16 +2920,13 @@
                 flushList();
             }
 
-            // Горизонтальная линия
             if (/^\s*[-*_]{3,}\s*$/.test(line)) {
                 html += '<hr class="md-hr">';
                 continue;
             }
 
-            // Пустая строка
             if (line.trim() === '') continue;
 
-            // Параграф
             html += `<p class="md-p">${inlineMd(line)}</p>`;
         }
 
@@ -2978,7 +2943,6 @@
         s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
         s = s.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>');
         s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, label, url) => {
-            // Внутренние анкоры (#anchor) — без target="_blank"
             if (url.startsWith('#')) {
                 return `<a href="${url}" data-md-anchor-link="${url.slice(1)}">${label}</a>`;
             }
@@ -2988,7 +2952,7 @@
     }
 
     /* =====================================================================
-       Часть 5. Карта (OpenLayers)
+       Часть 5. Карта
        ===================================================================== */
 
     let olMap = null;
@@ -3006,7 +2970,6 @@
             return;
         }
 
-        // --- Входной слой (серый, с заливкой для полигонов) ---
         inputVectorSource = new ol.source.Vector();
         inputVectorLayer = new ol.layer.Vector({
             source: inputVectorSource,
@@ -3055,7 +3018,8 @@
             zIndex: 1
         });
 
-        // --- Выходной слой (цветной, поверх) ---
+        // Стиль выходного слоя — только те object_type, что разрешены
+        // разделом 7.1 ТЗ: heat_network, heat_chamber, technical_node.
         outputVectorSource = new ol.source.Vector();
         outputVectorLayer = new ol.layer.Vector({
             source: outputVectorSource,
@@ -3066,11 +3030,13 @@
                 const geomType = feature.getGeometry().getType();
 
                 let color = '#656d76';
-                if (type === 'heat_network') color = (laying === 'special') ? '#fca130' : '#1f6feb';
-                else if (type === 'reconstruction') color = '#8250df';
-                else if (type === 'oks_connection_point') color = '#cf222e';
-                else if (type === 'heat_chamber') color = '#bf8700';
-                else if (type === 'technical_node') color = '#8250df';
+                if (type === 'heat_network') {
+                    color = (laying === 'special') ? '#fca130' : '#1f6feb';
+                } else if (type === 'heat_chamber') {
+                    color = '#bf8700';
+                } else if (type === 'technical_node') {
+                    color = '#8250df';
+                }
 
                 if (geomType === 'Point' || geomType === 'MultiPoint') {
                     return new ol.style.Style({
@@ -3107,14 +3073,12 @@
             })
         });
 
-        // --- Popup ---
         overlay = new ol.Overlay({
             element: document.getElementById('olPopup'),
             autoPan: { animation: { duration: 250 } }
         });
         olMap.addOverlay(overlay);
 
-        // --- Зум колёсиком только с Ctrl ---
         const interactions = olMap.getInteractions().getArray().slice();
         interactions.forEach((interaction) => {
             if (interaction instanceof ol.interaction.MouseWheelZoom) {
@@ -3131,7 +3095,6 @@
             }
         }));
 
-        // Курсор "лупа" при зажатом Ctrl
         const mapEl = olMap.getTargetElement();
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Control' && !e.repeat) {
@@ -3144,7 +3107,6 @@
             }
         });
 
-        // --- Клик по карте ---
         olMap.on('singleclick', (evt) => {
             const feature = olMap.forEachFeatureAtPixel(evt.pixel, (f, layer) => {
                 if (layer === outputVectorLayer) return f;
@@ -3159,7 +3121,6 @@
             }
         });
 
-        // --- Курсор-указатель над фичами выходного слоя ---
         olMap.on('pointermove', (evt) => {
             if (evt.dragging) return;
             const hit = olMap.hasFeatureAtPixel(evt.pixel, {
@@ -3173,7 +3134,6 @@
             }
         });
 
-        // --- Кнопка закрытия попапа ---
         if (!popupCloserHandlerAttached) {
             popupCloserHandlerAttached = true;
             document.getElementById('olPopupCloser').addEventListener('click', (e) => {
@@ -3337,11 +3297,8 @@
             ensureMap();
             if (!olMap) return;
 
-            // 1) Подгружаем результат по taskId в выходной слой
             loadGeoJsonIntoLayer('/api/v1/result/' + taskId, 'output');
 
-            // Синхронизируем выпадающий список «Результат», если
-            // файл result_<taskId>.geojson уже есть в state.results
             const expectedResultName = 'result_' + taskId + '.geojson';
             const outSel = document.getElementById('outputFileSelect');
             const outOpt = Array.from(outSel.options)
@@ -3352,8 +3309,6 @@
                 outSel.value = '';
             }
 
-            // 2) Ищем самый свежий входной файл и параллельно грузим его
-            //    во входной слой — так на карте видно и вход, и результат
             const uploads = (state.uploads || []).slice()
                 .sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0));
 
